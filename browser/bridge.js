@@ -125,15 +125,48 @@
   // body is empty or not JSON (a lot of action endpoints return 204/plain
   // "ok" — we still need the request URL/method/headers/body to build a
   // replay template from it, we just won't get any response data from it).
+  //
+  // One exception: Meta's "Comet" framework fires a constant stream of
+  // internal telemetry/perf-logging beacons (recognizable by the __a/__hs/
+  // __spin_*/fb_dtsg/jazoest querystring noise) that are never anything
+  // Threads-related — skip those so they don't clutter capture or trigger
+  // pointless work for a request we'd never want to replay anyway.
+  const TELEMETRY_URL_RE = /\/ajax\/bz(\?|$)/i;
+
   function shouldForward(url, method, contentType) {
     if (url.startsWith(BASE)) return false; // never loop back on ourselves
+    if (TELEMETRY_URL_RE.test(url)) return false;
     if (method !== 'GET') return true;
     return !contentType || contentType.includes('json');
   }
 
+  // postMessage can only send structured-cloneable data — FormData (and a
+  // few other body types some requests use) aren't cloneable and throw
+  // synchronously if we try, which was silently breaking capture for any
+  // request that happened to use one. Normalize everything to a plain
+  // string upfront so this can never happen regardless of body type.
+  function serializeBody(body) {
+    if (body === undefined || body === null || typeof body === 'string') return body;
+    try {
+      if (typeof FormData !== 'undefined' && body instanceof FormData) {
+        const obj = {};
+        for (const [k, v] of body.entries()) {
+          obj[k] = (typeof File !== 'undefined' && v instanceof File) ? `[File: ${v.name}]` : v;
+        }
+        return JSON.stringify(obj);
+      }
+      if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.toString();
+      if (typeof Blob !== 'undefined' && body instanceof Blob) return '[Blob]';
+      if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return '[binary]';
+      return JSON.stringify(body);
+    } catch {
+      return String(body);
+    }
+  }
+
   function safeIngest(payload) {
     if (payload.method !== 'GET') {
-      console.log(`[threads-bot-filter] captured ${payload.method} ${payload.url} — check the local UI's "Record your actions" table to tag it.`);
+      console.log(`[threads-bot-filter] captured ${payload.method} ${payload.url}`);
     }
     rpc('ingest', payload).catch((err) => console.warn('[threads-bot-filter] ingest relay failed:', err));
   }
@@ -153,7 +186,7 @@
             method,
             url,
             requestHeaders: headersToObject(init && init.headers),
-            requestBody: init && init.body,
+            requestBody: serializeBody(init && init.body),
             responseBody: json,
             ts: Date.now(),
           });
@@ -189,7 +222,7 @@
               method: meta.method,
               url: meta.url,
               requestHeaders: meta.headers,
-              requestBody: body,
+              requestBody: serializeBody(body),
               responseBody: json,
               ts: Date.now(),
             });
