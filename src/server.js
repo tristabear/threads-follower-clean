@@ -1,0 +1,166 @@
+const path = require('path');
+const express = require('express');
+const { Store } = require('./store');
+const { evaluateAccount } = require('./heuristics');
+
+const ALLOWED_BRIDGE_ORIGINS = /^https:\/\/(www\.)?threads\.(net|com)$/;
+
+function bridgeCors(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_BRIDGE_ORIGINS.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+}
+
+function classifyGuessType(method, url) {
+  const u = url.toLowerCase();
+  if (method === 'GET') return 'read';
+  if (/unblock/.test(u)) return 'unblock?';
+  if (/block/.test(u)) return 'block?';
+  if (/report|flag/.test(u)) return 'report?';
+  return 'other-write';
+}
+
+function accountSummary(account) {
+  const { matches, unknownRules } = evaluateAccount(account);
+  return { ...account, matches, unknownRules };
+}
+
+function createApp(port) {
+  const store = new Store();
+  const app = express();
+  app.use(express.json({ limit: '5mb' }));
+  app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  app.get('/api/bridge-script', (req, res) => {
+    const fs = require('fs');
+    const template = fs.readFileSync(path.join(__dirname, '..', 'browser', 'bridge.js'), 'utf8');
+    const rendered = template.replace(/__LOCAL_SERVER_PORT__/g, String(port));
+    res.type('application/javascript').send(rendered);
+  });
+
+  // --- Endpoints called cross-origin, from the console bridge on threads.net ---
+  app.options('/api/ingest', bridgeCors);
+  app.post('/api/ingest', bridgeCors, (req, res) => {
+    const { method, url, requestHeaders, requestBody, responseBody, ts } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'missing url' });
+
+    let harvested = 0;
+    if (responseBody && typeof responseBody === 'object') {
+      harvested = store.ingestJson(responseBody);
+    }
+
+    if (method && method !== 'GET') {
+      store.recordActionRequest({
+        ts: ts || Date.now(),
+        method,
+        url,
+        requestHeaders,
+        requestBody: typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || {}),
+        guessType: classifyGuessType(method, url),
+      });
+    }
+
+    store.persist();
+    res.json({ ok: true, harvested });
+  });
+
+  app.options('/api/pending-jobs', bridgeCors);
+  app.get('/api/pending-jobs', bridgeCors, (req, res) => {
+    const profileFetchUsernames = store.drainProfileFetchQueue(15);
+    const actionJobs = store.drainActionJobs(5);
+    res.json({
+      profileFetchUsernames,
+      actionJobs,
+      templates: store.taggedTemplates,
+    });
+  });
+
+  app.options('/api/complete-job', bridgeCors);
+  app.post('/api/complete-job', bridgeCors, (req, res) => {
+    const { jobId, status, detail } = req.body || {};
+    const job = store.completeActionJob(jobId, status, detail);
+    res.json({ ok: true, found: !!job });
+  });
+
+  // --- Endpoints called same-origin, from the local web UI ---
+  app.get('/api/status', (req, res) => {
+    const accounts = store.listAccounts();
+    const withCounts = accounts.filter((a) => typeof a.follower_count === 'number').length;
+    const withBio = accounts.filter((a) => a.biography !== undefined && a.biography !== null).length;
+    res.json({
+      accountCount: accounts.length,
+      accountsWithCounts: withCounts,
+      accountsWithBio: withBio,
+      profileFetchQueueLength: store.profileFetchQueue.length,
+      taggedTemplates: {
+        block: !!store.taggedTemplates.block,
+        report: !!store.taggedTemplates.report,
+      },
+      pendingActionJobs: store.actionJobs.filter((j) => j.status === 'pending' || j.status === 'dispatched').length,
+    });
+  });
+
+  app.get('/api/accounts', (req, res) => {
+    res.json(store.listAccounts().map(accountSummary));
+  });
+
+  app.get('/api/action-requests', (req, res) => {
+    res.json(store.actionRequests.map((r) => ({
+      id: r.id,
+      ts: r.ts,
+      method: r.method,
+      url: r.url,
+      guessType: r.guessType,
+      taggedRole: r.taggedRole,
+    })));
+  });
+
+  app.post('/api/tag-request', (req, res) => {
+    const { requestId, role, targetUsername } = req.body || {};
+    const target = store.getAccountByUsername(targetUsername || '');
+    if (!target) return res.status(400).json({ error: `no known account for username "${targetUsername}" — make sure it was captured first` });
+    try {
+      const template = store.tagActionRequest(requestId, role, target);
+      res.json({ ok: true, template });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/request-profile-fetch', (req, res) => {
+    const { usernames } = req.body || {};
+    if (!Array.isArray(usernames) || usernames.length === 0) {
+      return res.status(400).json({ error: 'usernames must be a non-empty array' });
+    }
+    store.queueProfileFetch(usernames);
+    res.json({ ok: true, queued: usernames.length });
+  });
+
+  app.post('/api/request-actions', (req, res) => {
+    const { role, usernames } = req.body || {};
+    if (role !== 'block' && role !== 'report') return res.status(400).json({ error: 'role must be block or report' });
+    if (!store.taggedTemplates[role]) return res.status(400).json({ error: `no ${role} template recorded yet — perform that action once on threads.net while the bridge is running` });
+    if (!Array.isArray(usernames) || usernames.length === 0) return res.status(400).json({ error: 'usernames must be a non-empty array' });
+
+    const targets = [];
+    for (const u of usernames) {
+      const acct = store.getAccountByUsername(u);
+      if (acct) targets.push({ pk: acct.pk, username: acct.username });
+    }
+    const jobs = store.queueActionJobs(role, targets);
+    res.json({ ok: true, jobs: jobs.map((j) => ({ jobId: j.jobId, username: j.target.username })) });
+  });
+
+  app.get('/api/action-jobs', (req, res) => {
+    res.json(store.actionJobs);
+  });
+
+  return app;
+}
+
+module.exports = { createApp };

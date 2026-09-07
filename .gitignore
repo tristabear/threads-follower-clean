@@ -1,0 +1,3 @@
+node_modules/
+.threads-bot-filter/
+*.log

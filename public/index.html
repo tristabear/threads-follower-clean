@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>threads-bot-filter</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>threads-bot-filter</h1>
+  <p class="subtitle">Flag likely bot/spam followers on your own Threads account, then bulk block/report the ones you pick.</p>
+</header>
+
+<main>
+  <section class="card" id="step1">
+    <h2>1. Connect your browser</h2>
+    <p>Open <a href="https://www.threads.net" target="_blank" rel="noopener">threads.net</a> in another tab, log in, open DevTools (F12) → Console, and paste this whole script, then press Enter:</p>
+    <textarea id="bridge-script" readonly rows="4"></textarea>
+    <button id="copy-bridge">Copy script</button>
+    <span id="copy-confirm" class="hint"></span>
+    <p class="hint">This runs entirely in your browser tab. It never sees or sends your password/cookies — it just lets your tab report its own network traffic to this local tool, and later replay actions you approve.</p>
+  </section>
+
+  <section class="card" id="step2">
+    <h2>2. Capture your followers</h2>
+    <p>On the threads.net tab, go to your profile → Followers, and scroll all the way through the list. Then open a few profiles that look like they might be bots (this helps capture richer data).</p>
+    <div class="status-grid">
+      <div><span id="stat-accounts">0</span><label>accounts seen</label></div>
+      <div><span id="stat-counts">0</span><label>with follower/following counts</label></div>
+      <div><span id="stat-bio">0</span><label>with bio fetched</label></div>
+      <div><span id="stat-queue">0</span><label>profile fetches queued</label></div>
+    </div>
+    <button id="fetch-missing">Fetch details for accounts missing data</button>
+    <span class="hint" id="fetch-missing-hint"></span>
+  </section>
+
+  <section class="card" id="step3">
+    <h2>3. Record your actions (one-time)</h2>
+    <p>So this tool can replay Block/Report exactly the way your account currently does it, perform each action <strong>once manually</strong> on threads.net while the bridge is running (e.g. on an obvious spam account), then tag the captured request below. Also open any one follower's profile page to capture a "profile info" template (needed for step 2's detail-fetch button).</p>
+    <table class="requests-table">
+      <thead><tr><th>Method</th><th>URL</th><th>Guess</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
+      <tbody id="requests-body"></tbody>
+    </table>
+    <div class="template-status">
+      Templates recorded:
+      <span id="tpl-block" class="badge">block ✗</span>
+      <span id="tpl-report" class="badge">report ✗</span>
+      <span id="tpl-profile" class="badge">profile_info ✗</span>
+    </div>
+  </section>
+
+  <section class="card" id="step4">
+    <h2>4. Filter &amp; review</h2>
+    <div class="filters">
+      <label><input type="checkbox" class="rule-filter" value="a" /> a) animal name + number</label>
+      <label><input type="checkbox" class="rule-filter" value="b" /> b) letter + Taiwan mobile format</label>
+      <label><input type="checkbox" class="rule-filter" value="c" /> c) 0 followers / 48-49 following / no photo</label>
+      <label><input type="checkbox" class="rule-filter" value="d" /> d) Instagram linked in bio</label>
+      <label class="match-mode">
+        Match:
+        <select id="match-mode">
+          <option value="any">any selected filter</option>
+          <option value="all">all selected filters</option>
+        </select>
+      </label>
+      <label class="show-all"><input type="checkbox" id="show-all" /> show all captured accounts (ignore filters)</label>
+    </div>
+
+    <div class="bulk-bar">
+      <button id="select-all">Select all shown</button>
+      <button id="select-none">Select none</button>
+      <span id="selected-count">0 selected</span>
+      <button id="block-selected" class="danger">Block selected</button>
+      <button id="block-report-selected" class="danger">Block + Report selected</button>
+    </div>
+
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th></th><th>Username</th><th>Name</th><th>Followers</th><th>Following</th><th>Photo</th><th>Matched as</th><th>Bio / IG link</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="results-body"></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

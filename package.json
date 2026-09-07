@@ -1,0 +1,19 @@
+{
+  "name": "threads-bot-filter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local tool to flag likely bot/spam followers on your own Threads account and bulk block/report the ones you select.",
+  "type": "commonjs",
+  "bin": {
+    "threads-bot-filter": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
