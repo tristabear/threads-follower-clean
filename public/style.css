@@ -77,28 +77,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; }
 th { color: var(--muted); font-weight: 500; }
-.requests-table td { vertical-align: middle; }
-.preview-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
-.preview-cell code { font-size: 11px; color: var(--muted); }
-.requests-table input[type="text"] {
-  width: 120px;
-  padding: 4px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-}
-.template-status { margin-top: 10px; font-size: 12px; }
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  margin-right: 6px;
-  font-size: 11px;
-}
-.badge.ok { color: #1a8a3d; border-color: #1a8a3d; }
 .filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 10px; }
 .filters label { font-size: 13px; }
 .bulk-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -121,15 +99,15 @@ th { color: var(--muted); font-weight: 500; }
 .status-cell.pending, .status-cell.dispatched { color: var(--muted); }
 a { color: var(--accent); }
 
-details.card summary { cursor: pointer; font-size: 15px; font-weight: 500; }
-details.card[open] summary { margin-bottom: 10px; }
-.reset-tpl {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  padding: 2px 8px;
-  font-size: 11px;
-  margin-right: 12px;
+.footer-note { color: var(--muted); font-size: 12px; text-align: center; }
+button.linklike {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .modal-backdrop {

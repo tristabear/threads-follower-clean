@@ -72,18 +72,10 @@
       $('#stat-counts').textContent = s.accountsWithCounts;
       $('#stat-bio').textContent = s.accountsWithBio;
       $('#stat-queue').textContent = s.profileFetchQueueLength;
-      setBadge('#tpl-block', 'block', s.taggedTemplates.block);
-      setBadge('#tpl-report', 'report', s.taggedTemplates.report);
-      setBadge('#tpl-profile', 'profile_info', s.taggedTemplates.profile_info);
       updateBridgeBanner(s);
     } catch (err) {
       console.error(err);
     }
-  }
-  function setBadge(sel, name, ok) {
-    const el = $(sel);
-    el.textContent = `${name} ${ok ? '✓' : '✗'}`;
-    el.classList.toggle('ok', !!ok);
   }
 
   $('#fetch-missing').addEventListener('click', async () => {
@@ -159,66 +151,19 @@
     }, 1500);
   }
 
-  $$('.reset-tpl').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!confirm(`Reset the learned "${btn.dataset.role}" action? You'll be walked through teaching it again next time you use it.`)) return;
-      try {
-        await api('/api/clear-template', { method: 'POST', body: JSON.stringify({ role: btn.dataset.role }) });
-        pollStatus();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
+  $('#reset-learned').addEventListener('click', async () => {
+    if (!confirm('Reset everything this tool has learned (block, report, and profile-info requests)? You\'ll be walked through teaching it again next time you need each one.')) return;
+    try {
+      await Promise.all(['block', 'report', 'profile_info'].map(
+        (role) => api('/api/clear-template', { method: 'POST', body: JSON.stringify({ role }) }),
+      ));
+      showToast('Reset. It\'ll walk you through teaching it again next time you click Block, Report, or Fetch details.');
+    } catch (err) {
+      alert(err.message);
+    }
   });
 
-  // --- Step 3: action requests / tagging ---
-  async function pollActionRequests() {
-    try {
-      const reqs = await api('/api/action-requests');
-      const body = $('#requests-body');
-      body.innerHTML = '';
-      for (const r of reqs.slice().reverse()) {
-        const tr = document.createElement('tr');
-        const fullPreview = `REQUEST BODY:\n${r.bodyPreview || '(empty)'}\n\nRESPONSE:\n${r.responseSnippet || '(empty/non-JSON)'}`;
-        const previewLine = r.bodyPreview ? truncate(r.bodyPreview.replace(/\s+/g, ' '), 70) : '(empty body)';
-        tr.innerHTML = `
-          <td>${escapeHtml(timeAgo(r.ts))}</td>
-          <td>${r.method}</td>
-          <td>${r.operationHint ? `<strong>${escapeHtml(r.operationHint)}</strong>` : '<span class="hint">none found</span>'}</td>
-          <td class="preview-cell" title="${escapeHtml(fullPreview)}"><code>${escapeHtml(previewLine)}</code></td>
-          <td>
-            <button data-role="block">Block</button>
-            <button data-role="report">Report</button>
-            <button data-role="profile_info">Profile info</button>
-          </td>
-          <td><input type="text" placeholder="username" /></td>
-          <td>${r.taggedRole ? `tagged: ${r.taggedRole}` : ''}</td>
-        `;
-        const input = tr.querySelector('input');
-        tr.querySelectorAll('button[data-role]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const targetUsername = input.value.trim();
-            if (!targetUsername) { input.focus(); return; }
-            try {
-              await api('/api/tag-request', {
-                method: 'POST',
-                body: JSON.stringify({ requestId: r.id, role: btn.dataset.role, targetUsername }),
-              });
-              pollActionRequests();
-              pollStatus();
-            } catch (err) {
-              alert(err.message);
-            }
-          });
-        });
-        body.appendChild(tr);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  // --- Step 4: accounts / filtering / actions ---
+  // --- Step 3: accounts / filtering / actions ---
   async function pollAccounts() {
     try {
       state.accounts = await api('/api/accounts');
@@ -243,15 +188,20 @@
     }
   }
 
+  const ALL_RULE_IDS = ['a', 'b', 'c', 'd', 'e'];
+
   function activeFilters() {
     return $$('.rule-filter:checked').map((el) => el.value);
   }
 
+  // No checkboxes checked means "everything suspicious" (any of the 5
+  // rules), not "everyone captured" — that's what the explicit "show all
+  // captured accounts" checkbox is for.
   function matchesFilters(account, filters, mode) {
-    if (filters.length === 0) return true;
+    const effective = filters.length === 0 ? ALL_RULE_IDS : filters;
     const matchedIds = new Set(account.matches.map((m) => m.id));
-    if (mode === 'all') return filters.every((f) => matchedIds.has(f));
-    return filters.some((f) => matchedIds.has(f));
+    if (mode === 'all') return effective.every((f) => matchedIds.has(f));
+    return effective.some((f) => matchedIds.has(f));
   }
 
   function renderResults() {
@@ -272,8 +222,12 @@
       const bioSnippet = a.biography ? escapeHtml(truncate(a.biography, 80)) : '<span class="hint">no bio fetched</span>';
       const igLink = igHandle ? `<br/><a href="https://instagram.com/${igHandle}" target="_blank" rel="noopener">@${igHandle}</a>` : '';
       const job = state.jobsByUsername.get(a.username);
-      const statusText = job ? `${job.role}: ${job.status}` : '';
-      const statusClass = job ? job.status : '';
+      let statusText = job ? `${job.role}: ${job.status}` : '';
+      let statusClass = job ? job.status : '';
+      if (job && job.detail) {
+        if (/not blocked/i.test(job.detail)) { statusText += ' ⚠ NOT actually blocked'; statusClass = 'failed'; } else if (/unverified/i.test(job.detail)) statusText += ' (unverified)';
+        else if (/verified/i.test(job.detail)) statusText += ' ✓';
+      }
 
       tr.innerHTML = `
         <td><input type="checkbox" class="row-select" ${checked} /></td>
@@ -386,7 +340,6 @@
 
   loadBridgeScript();
   pollStatus(); setInterval(pollStatus, 2500);
-  pollActionRequests(); setInterval(pollActionRequests, 2500);
   pollAccounts(); setInterval(pollAccounts, 3500);
   pollJobs(); setInterval(pollJobs, 2500);
 })();

@@ -77,13 +77,18 @@ function ruleEmptyFreshBot(account) {
   return null;
 }
 
-// Rule d: links Instagram in bio, and (per your own judgment) that Instagram
-// account looks like it was created this year and/or around the same time as
-// the Threads account. Instagram doesn't expose account-creation date via any
-// official or reliable unofficial signal, so this tool can only do the first
-// half automatically (detect the IG link/handle) — you have to eyeball the
-// linked IG profile yourself to judge account age. We surface the extracted
-// handle/link prominently so that's a one-click check.
+// Rule d: the account's Threads profile shows it joined THIS year (from
+// Threads' own "About this profile" panel, if we've captured that data) AND
+// its bio links an Instagram account. That combination — brand new Threads
+// account + an Instagram handle in the bio — is the actual clue; merely
+// linking an Instagram account (regardless of account age) is too common
+// among real users to mean anything on its own.
+//
+// We can't automatically confirm the linked Instagram account is *also* new
+// this year — Instagram exposes no reliable creation-date signal we can
+// reach from a Threads-only browser session — so that half stays a manual,
+// one-click check: we surface the extracted handle/link so you can open it
+// and look at its own About-this-account panel yourself.
 const IG_LINK_RE = /instagram\.com\/([a-zA-Z0-9._]{1,30})/i;
 const IG_HANDLE_MENTION_RE = /(?:^|\s)(?:ig|instagram)\s*[:@]\s*@?([a-zA-Z0-9._]{1,30})/i;
 
@@ -107,14 +112,17 @@ function extractInstagramHandle(account) {
 
 function ruleInstagramInBio(account) {
   const hasBioData = account.biography !== undefined && account.biography !== null;
-  if (!hasBioData) {
+  if (!hasBioData || account.threads_joined_year === undefined) {
     return { unknown: true };
   }
+  const currentYear = new Date().getFullYear();
+  if (account.threads_joined_year !== currentYear) return null;
+
   const handle = extractInstagramHandle(account);
   if (handle) {
     return {
-      label: 'ig-in-bio',
-      detail: `bio links Instagram @${handle} — open it and check the account age yourself (Threads gives us no reliable creation-date signal)`,
+      label: 'new-threads+ig-in-bio',
+      detail: `Threads account joined ${account.threads_joined_year} (this year) and bio links Instagram @${handle} — open it and check whether its own "About this account" also shows ${currentYear}`,
       instagramHandle: handle,
     };
   }
@@ -160,7 +168,7 @@ const RULES = [
   { id: 'a', name: 'Animal name + number', fn: ruleAnimalPlusNumber },
   { id: 'b', name: 'Letter + Taiwan mobile format', fn: ruleLetterPlusTaiwanPhone },
   { id: 'c', name: '0 followers / 48-49 following / no photo', fn: ruleEmptyFreshBot },
-  { id: 'd', name: 'Instagram linked in bio', fn: ruleInstagramInBio },
+  { id: 'd', name: 'New Threads account + Instagram in bio', fn: ruleInstagramInBio },
   { id: 'e', name: 'Generated name, username = display name', fn: ruleGeneratedNamePattern },
 ];
 

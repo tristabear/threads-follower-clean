@@ -45,6 +45,15 @@ tab**:
    part is same-origin, so it doesn't need the relay, and it's rate-limited
    with randomized delays between actions to look and behave like normal
    manual use.
+6. A block replay returning HTTP 200 doesn't reliably mean the block
+   actually took effect — the same reference project linked below runs an
+   "adaptive verification system... to counter false successes" for exactly
+   this reason. So after each block, the tool re-fetches the target's own
+   profile info and checks whether it now actually reports you as blocking
+   them before calling it a success; if that can't be confirmed (no
+   profile_info template yet) it's marked "success (unverified)", and if the
+   re-check explicitly contradicts it, it's marked failed so you know to
+   look again rather than assuming it worked.
 
 **Caveats you should actually read:**
 
@@ -63,11 +72,19 @@ tab**:
   occasionally match rule (a) or (c) by coincidence. Always glance at an
   account before blocking it, and be extra careful before reporting one —
   reporting a real person is a real cost to them.
-- Rule (d)'s "Instagram account created around the same time" half can't be
-  automated: Instagram exposes no reliable creation-date signal (official or
-  unofficial). The tool detects and surfaces the Instagram link/handle from
-  the bio for you; you still have to open it and eyeball the account age
-  yourself.
+- Rule (d) needs your account's "About this profile" data to know when a
+  candidate joined Threads (field name guessed by scanning for join/created
+  -like keys, since it's undocumented) — it stays "unknown" for a candidate
+  until that's been captured. It still can't confirm the *linked Instagram
+  account's* own age automatically: Instagram exposes no reliable
+  creation-date signal (official or unofficial) reachable from a
+  Threads-only browser session. The tool surfaces the Instagram
+  handle/link for you so checking that part is one click.
+- Block/report "success" is now a best-effort verified claim, not a
+  guarantee — see point 6 above. Always spot-check a few afterward,
+  especially if you see "(unverified)" a lot (it means you haven't used
+  "Fetch details" yet, so there's no profile_info template to double-check
+  with).
 - Captured data (other people's usernames, bios, etc.) is written to
   `.threads-bot-filter/state.json` on your machine so you don't lose
   progress on restart. It's gitignored. Don't publish or share it.
@@ -82,13 +99,18 @@ npm start
 Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
 
 1. **Connect your browser** — copy the bridge script, paste it into
-   DevTools console on threads.net.
+   DevTools console on threads.net. Watch the banner at the top of the page
+   turn green ("Bridge: connected") — if it doesn't, nothing past this point
+   will work, so that's the first thing to check if something seems stuck.
 2. **Capture your followers** — scroll your followers list on threads.net.
    Watch the counters go up on the local page. Click **"Fetch details for
    accounts missing data"** to backfill follower/following counts, photo,
-   and bio (needed for rules c and d).
-3. **Filter, select, and act** — check the rule boxes (a-e), pick "any" or
-   "all", review the labeled table, select the accounts you want, and click
+   and bio (needed for rules c and d). For rule d specifically, also open
+   "About this profile" on a candidate at least once so their Threads
+   join-date can be captured.
+3. **Filter, select, and act** — the list already only shows accounts
+   matching at least one rule; check specific rule boxes (a-e) to narrow it
+   further, pick "any" or "all", select the accounts you want, and click
    **Block selected** or **Block + Report selected**.
 
 That's genuinely it for day-to-day use. The "teach it your block/report"
@@ -96,9 +118,10 @@ step isn't a separate thing you have to understand — it only shows up
 *inside* step 2/3, the first time you click a button that needs it: a modal
 tells you exactly which one account to act on manually on threads.net, and
 detects and learns from it automatically. If it ever seems to learn the
-wrong thing (rare, but Threads batches several network calls per click), an
-**Advanced** section at the bottom of the page lets you inspect exactly what
-was captured and reset a learned action to try again.
+wrong thing (rare, but Threads batches several network calls per click),
+there's a small **"Reset what this tool has learned"** link at the bottom of
+the page — one click clears it and you'll be walked through teaching it
+again next time you need it.
 
 ## The five rules
 
@@ -107,7 +130,7 @@ was captured and reset a learned action to try again.
 | a | Username matches an animal name + number pattern (e.g. `tiger8842`, `gecko.52078145`) |
 | b | Username or display name matches one letter + Taiwan mobile format (e.g. `a0912345678`) |
 | c | 0 followers, following exactly 48 or 49, no profile photo |
-| d | Bio links an Instagram account — flagged for you to manually check if it looks freshly created |
+| d | Threads account joined **this year** (from "About this profile") AND bio links an Instagram account — flagged for you to manually check whether that IG account also looks freshly created |
 | e | Username looks like an auto-generated "firstname.lastname+digits" handle and the display name was never customized away from it (e.g. username `daisy.clark18`, name `daisy.clark18`) |
 
 Rule (a)'s word list lives in `src/animalNames.js` — it's a plain JS array,
@@ -120,11 +143,23 @@ Rules live in `src/heuristics.js` if you want to tune the thresholds.
 bin/cli.js          entry point — starts the local server
 src/server.js        Express app: status/accounts/tagging/job APIs
 src/store.js          in-memory account store + generic JSON extractor
-src/heuristics.js     the 4 detection rules
+src/heuristics.js     the 5 detection rules
 src/animalNames.js    word list for rule (a)
 browser/bridge.js     the console script pasted into threads.net
-public/                the local web UI (plain HTML/CSS/JS, no build step)
+public/index.html,app.js,style.css   the local web UI
+public/relay.html,relay.js            same-origin popup that gets the
+                                       bridge past threads.net's CSP
 ```
+
+## Prior art
+
+[skiseiju/ThreadsBlocker_Project](https://github.com/skiseiju/ThreadsBlocker_Project)
+is a similar tool worth knowing about — it takes a different approach
+(simulates real UI clicks rather than replaying API calls, ships as a
+userscript/extension) and its own docs note it needs an "adaptive
+verification system" to catch cases where a block *looks* successful but
+isn't, which is exactly the failure mode this tool's block-verification
+step (see above) is also guarding against.
 
 ## Turning this into a Chrome extension later
 

@@ -44,6 +44,35 @@ function extractUserLikeObjects(node, out, depth) {
   }
 }
 
+// We don't know Threads' actual field name for "About this profile"'s date
+// joined (it's not documented anywhere, unofficial or otherwise), so scan
+// broadly by key-name pattern instead of a fixed whitelist — this keeps
+// working even if we guessed wrong the first time or Threads renames it.
+const JOIN_DATE_KEY_RE = /joined|join_date|date_joined|created_at|creation_date|account_created|member_since|registered/i;
+
+function parseJoinYear(value) {
+  let date;
+  if (typeof value === 'number') {
+    date = new Date(value > 1e12 ? value : value * 1000); // ms vs unix-seconds
+  } else if (typeof value === 'string') {
+    date = new Date(value);
+  } else {
+    return undefined;
+  }
+  const year = date.getFullYear();
+  if (Number.isNaN(date.getTime()) || year < 2000 || year > 2100) return undefined;
+  return year;
+}
+
+function findJoinYear(raw) {
+  for (const [key, value] of Object.entries(raw)) {
+    if (!JOIN_DATE_KEY_RE.test(key)) continue;
+    const year = parseJoinYear(value);
+    if (year) return year;
+  }
+  return undefined;
+}
+
 function normalizeUserObject(raw) {
   const followerCount = firstDefined(
     raw.follower_count,
@@ -75,6 +104,8 @@ function normalizeUserObject(raw) {
   // profile_pic_url being explicitly null/absent-but-keyed IS the signal for
   // "no photo" (rule c) — don't lose that by only checking truthiness.
   if (hasAvatarKey) obj.is_default_avatar = isDefaultAvatar(profilePicUrl);
+  const joinYear = findJoinYear(raw);
+  if (joinYear) obj.threads_joined_year = joinYear;
   return obj;
 }
 

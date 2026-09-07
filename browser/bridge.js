@@ -210,6 +210,43 @@
     return out;
   }
 
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // Headers captured once during "teach it" can go stale (rotating CSRF
+  // tokens etc.) — for any header that looks like a CSRF token, use the
+  // live cookie value at replay time instead of the frozen snapshot.
+  function refreshHeaders(headers) {
+    const out = { ...headers };
+    for (const key of Object.keys(out)) {
+      if (/csrftoken/i.test(key)) {
+        const live = getCookie('csrftoken');
+        if (live) out[key] = live;
+      }
+    }
+    return out;
+  }
+
+  // A replayed request can come back HTTP 200 while Threads' GraphQL layer
+  // reports the mutation failed (an `errors` array, or `data` full of
+  // nulls) — trusting res.ok alone is exactly how "says success but wasn't
+  // actually blocked" happens. Parse the body and treat those as failure.
+  function evaluateGraphqlResult(res, text) {
+    let json = null;
+    try { json = JSON.parse(text); } catch { /* not JSON */ }
+    if (!json) return { ok: res.ok, json: null };
+    if (Array.isArray(json.errors) && json.errors.length > 0) return { ok: false, json };
+    if (json.data && typeof json.data === 'object') {
+      const values = Object.values(json.data);
+      if (values.length > 0 && values.every((v) => v === null || v === undefined)) {
+        return { ok: false, json };
+      }
+    }
+    return { ok: res.ok, json };
+  }
+
   // These run as ordinary requests from the threads.net tab to threads.net's
   // own API — same-origin, so unaffected by the CSP issue the relay works
   // around. No relay needed here.
@@ -218,17 +255,52 @@
     const body = template.body !== undefined ? substitute(template.body, target.pk, target.username) : undefined;
     const res = await originalFetch(url, {
       method: template.method,
-      headers: template.headers,
+      headers: refreshHeaders(template.headers),
       body: template.method === 'GET' ? undefined : body,
       credentials: 'include',
     });
-    let snippet = '';
+    let text = '';
     try {
-      snippet = (await res.clone().text()).slice(0, 300);
+      text = await res.clone().text();
     } catch {
       // ignore
     }
-    return { ok: res.ok, status: res.status, snippet };
+    const { ok, json } = evaluateGraphqlResult(res, text);
+    return { ok, status: res.status, snippet: text.slice(0, 300), json };
+  }
+
+  // Best-effort: after a block, re-fetch the target via the profile_info
+  // template (if we have one) and look for a friendship_status.blocking-ish
+  // field to confirm it actually stuck, rather than trusting the mutation's
+  // own HTTP response. Returns 'verified' | 'contradicted' | 'unavailable'.
+  function extractBlockingFlag(json) {
+    if (!json || typeof json !== 'object') return undefined;
+    const stack = [json];
+    let depth = 0;
+    while (stack.length && depth < 5000) {
+      depth++;
+      const node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      if (typeof node.blocking === 'boolean') return node.blocking;
+      if (node.friendship_status && typeof node.friendship_status.blocking === 'boolean') {
+        return node.friendship_status.blocking;
+      }
+      for (const v of Object.values(node)) if (v && typeof v === 'object') stack.push(v);
+    }
+    return undefined;
+  }
+
+  async function verifyBlock(target, templates) {
+    if (!templates.profile_info) return { outcome: 'unavailable' };
+    try {
+      const result = await runTemplate(templates.profile_info, target);
+      const blocking = extractBlockingFlag(result.json);
+      if (blocking === true) return { outcome: 'verified' };
+      if (blocking === false) return { outcome: 'contradicted' };
+      return { outcome: 'unavailable' };
+    } catch {
+      return { outcome: 'unavailable' };
+    }
   }
 
   let stopped = false;
@@ -261,7 +333,24 @@
             }
             try {
               const result = await runTemplate(template, job.target);
-              safeCompleteJob(job.jobId, result.ok ? 'success' : 'failed', `HTTP ${result.status}: ${result.snippet}`);
+              if (!result.ok) {
+                safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status}: ${result.snippet}`);
+              } else if (job.role === 'block') {
+                // The mutation call succeeding doesn't guarantee the block
+                // actually stuck — re-check via profile_info before calling
+                // it done (see verifyBlock's comment above).
+                await sleep(jitterDelay());
+                const verification = await verifyBlock(job.target, templates);
+                if (verification.outcome === 'verified') {
+                  safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}, verified blocked`);
+                } else if (verification.outcome === 'contradicted') {
+                  safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status} but re-check shows NOT blocked — try again, or tag a fresh block request`);
+                } else {
+                  safeCompleteJob(job.jobId, 'success', `HTTP ${result.status} (unverified — no profile_info template to double-check with)`);
+                }
+              } else {
+                safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}: ${result.snippet}`);
+              }
             } catch (err) {
               safeCompleteJob(job.jobId, 'failed', String(err));
             }

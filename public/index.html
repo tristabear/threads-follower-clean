@@ -38,21 +38,23 @@
 
   <section class="card" id="step3">
     <h2>3. Filter, select, and act</h2>
+    <p class="hint">The list below only shows accounts that match at least one rule — it's not a dump of everyone captured. Check specific boxes to narrow it further, or check "show all captured accounts" if you want to browse everyone regardless of match.</p>
     <div class="filters">
       <label><input type="checkbox" class="rule-filter" value="a" /> a) animal name + number</label>
       <label><input type="checkbox" class="rule-filter" value="b" /> b) letter + Taiwan mobile format</label>
       <label><input type="checkbox" class="rule-filter" value="c" /> c) 0 followers / 48-49 following / no photo</label>
-      <label><input type="checkbox" class="rule-filter" value="d" /> d) Instagram linked in bio</label>
+      <label><input type="checkbox" class="rule-filter" value="d" /> d) new Threads account (joined this year) + Instagram linked in bio</label>
       <label><input type="checkbox" class="rule-filter" value="e" /> e) generated name (username = display name)</label>
       <label class="match-mode">
         Match:
         <select id="match-mode">
-          <option value="any">any selected filter</option>
-          <option value="all">all selected filters</option>
+          <option value="any">any checked filter</option>
+          <option value="all">all checked filters</option>
         </select>
       </label>
       <label class="show-all"><input type="checkbox" id="show-all" /> show all captured accounts (ignore filters)</label>
     </div>
+    <p class="hint">Rule d needs your account's "About this profile" data for each candidate to know when they joined Threads — open that panel on a candidate's profile (or use "Fetch details" above, which may already capture it) so it can be evaluated. It still can't check the linked Instagram account's own age automatically — the link shown for a match is a one-click way to check that yourself.</p>
 
     <div class="bulk-bar">
       <button id="select-all">Select all shown</button>
@@ -73,23 +75,7 @@
     </table>
   </section>
 
-  <details class="card">
-    <summary>Advanced: view raw captured requests, reset a learned action</summary>
-    <p class="hint">You shouldn't need this — it's here for troubleshooting if a guided capture (above) seems to have learned the wrong request.</p>
-    <div class="template-status">
-      Learned actions:
-      <span id="tpl-block" class="badge">block ✗</span>
-      <button class="reset-tpl" data-role="block">reset</button>
-      <span id="tpl-report" class="badge">report ✗</span>
-      <button class="reset-tpl" data-role="report">reset</button>
-      <span id="tpl-profile" class="badge">profile_info ✗</span>
-      <button class="reset-tpl" data-role="profile_info">reset</button>
-    </div>
-    <table class="requests-table">
-      <thead><tr><th>When</th><th>Method</th><th>Hint</th><th>Body / response preview</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
-      <tbody id="requests-body"></tbody>
-    </table>
-  </details>
+  <p class="footer-note">Something not working right? <button id="reset-learned" class="linklike">Reset what this tool has learned (block/report/profile info)</button> and it'll walk you through teaching it again next time you need it.</p>
 </main>
 
 <div class="modal-backdrop" id="record-modal" hidden>
