@@ -69,6 +69,7 @@ function createApp(port) {
   app.post('/api/ingest', (req, res) => {
     const { method, url, requestHeaders, requestBody, responseBody, ts } = req.body || {};
     if (!url) return res.status(400).json({ error: 'missing url' });
+    store.lastIngestAt = Date.now();
 
     let harvested = 0;
     if (responseBody && typeof responseBody === 'object') {
@@ -111,6 +112,7 @@ function createApp(port) {
   });
 
   app.get('/api/pending-jobs', (req, res) => {
+    store.lastPollAt = Date.now();
     const profileFetchUsernames = store.drainProfileFetchQueue(15);
     const actionJobs = store.drainActionJobs(5);
     res.json({
@@ -142,6 +144,8 @@ function createApp(port) {
         profile_info: !!store.taggedTemplates.profile_info,
       },
       pendingActionJobs: store.actionJobs.filter((j) => j.status === 'pending' || j.status === 'dispatched').length,
+      lastPollAt: store.lastPollAt,
+      lastIngestAt: store.lastIngestAt,
     });
   });
 

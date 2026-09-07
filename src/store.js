@@ -93,6 +93,10 @@ class Store {
     this.profileFetchQueue = []; // usernames pending a profile-info fetch
     this.actionJobs = []; // {jobId, role, target:{pk,username}, status}
     this.recording = null; // {role, targetUsername, startedAt} while "teach it" is armed
+    this.lastIngestAt = null; // updated on every /api/ingest
+    this.lastPollAt = null; // updated on every /api/pending-jobs poll — the
+    // bridge polls this every ~4s regardless of browsing activity, so it's
+    // the reliable "is the bridge actually still connected" signal
     this._nextId = 1;
     this._load();
   }

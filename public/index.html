@@ -9,6 +9,7 @@
 <header>
   <h1>threads-bot-filter</h1>
   <p class="subtitle">Flag likely bot/spam followers on your own Threads account, then bulk block/report the ones you pick.</p>
+  <div id="bridge-status" class="bridge-status unknown">● Bridge: not connected yet — paste the script into your threads.net console (step 1)</div>
 </header>
 
 <main>
@@ -99,6 +100,8 @@
     <button id="record-modal-cancel">Cancel</button>
   </div>
 </div>
+
+<div id="toast" class="toast" hidden></div>
 
 <script src="app.js"></script>
 </body>

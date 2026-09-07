@@ -3,6 +3,7 @@
     accounts: [],
     selected: new Set(),
     jobsByUsername: new Map(), // username -> latest job {role, status, detail}
+    bridgeConnected: false,
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -30,6 +31,39 @@
     setTimeout(() => { $('#copy-confirm').textContent = ''; }, 4000);
   });
 
+  // --- Bridge connectivity banner ---
+  // The bridge's poll loop hits /api/pending-jobs roughly every 4s whenever
+  // it's actually running in a threads.net tab, regardless of whether you're
+  // doing anything on the page — so a stale lastPollAt reliably means the
+  // bridge isn't connected (closed tab, closed relay popup, a page reload
+  // that wiped the pasted script), not just "you're not browsing right now".
+  const BRIDGE_STALE_MS = 12000;
+  function updateBridgeBanner(s) {
+    const el = $('#bridge-status');
+    const age = s.lastPollAt ? Date.now() - s.lastPollAt : null;
+    if (age !== null && age < BRIDGE_STALE_MS) {
+      state.bridgeConnected = true;
+      el.className = 'bridge-status connected';
+      el.textContent = '● Bridge: connected';
+    } else if (s.lastPollAt) {
+      state.bridgeConnected = false;
+      el.className = 'bridge-status disconnected';
+      el.textContent = `● Bridge: not responding (last seen ${timeAgo(s.lastPollAt)}) — is the threads.net tab and its relay popup still open?`;
+    } else {
+      state.bridgeConnected = false;
+      el.className = 'bridge-status unknown';
+      el.textContent = '● Bridge: not connected yet — paste the script into your threads.net console (step 1)';
+    }
+  }
+
+  function showToast(message) {
+    const el = $('#toast');
+    el.textContent = message;
+    el.hidden = false;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => { el.hidden = true; }, 6000);
+  }
+
   // --- Step 2: status ---
   async function pollStatus() {
     try {
@@ -41,6 +75,7 @@
       setBadge('#tpl-block', 'block', s.taggedTemplates.block);
       setBadge('#tpl-report', 'report', s.taggedTemplates.report);
       setBadge('#tpl-profile', 'profile_info', s.taggedTemplates.profile_info);
+      updateBridgeBanner(s);
     } catch (err) {
       console.error(err);
     }
@@ -287,31 +322,51 @@
   async function runBulkAction(roles) {
     const usernames = Array.from(state.selected);
     if (usernames.length === 0) return;
+    if (!state.bridgeConnected) {
+      const proceed = confirm(
+        "The bridge doesn't look connected right now (see the banner at the top of the page) — "
+        + 'nothing will actually run on threads.net until it is, including the one-time "teach it" step. '
+        + 'Continue anyway (e.g. because you just pasted the script and it hasn\'t checked in yet)?',
+      );
+      if (!proceed) return;
+    }
     if (!confirm(`${roles.join(' + ')} ${usernames.length} account(s)? This will be executed from your threads.net tab.`)) return;
 
-    for (const role of roles) {
-      const { ok, recorded } = await ensureTemplate(role, usernames[0]);
-      if (!ok) return; // user cancelled the guided capture
+    try {
+      let totalQueued = 0;
+      for (const role of roles) {
+        const { ok, recorded } = await ensureTemplate(role, usernames[0]);
+        if (!ok) return; // user cancelled the guided capture
 
-      let toQueue = usernames;
-      if (recorded) {
-        // usernames[0] was just done manually as the "teach it" example —
-        // don't queue it again, just reflect that it's done.
-        toQueue = usernames.slice(1);
-        state.jobsByUsername.set(usernames[0], {
-          jobId: -1,
-          role,
-          status: 'success',
-          detail: 'done manually (used to teach the tool)',
-        });
-        renderResults();
+        let toQueue = usernames;
+        if (recorded) {
+          // usernames[0] was just done manually as the "teach it" example —
+          // don't queue it again, just reflect that it's done.
+          toQueue = usernames.slice(1);
+          state.jobsByUsername.set(usernames[0], {
+            jobId: -1,
+            role,
+            status: 'success',
+            detail: 'done manually (used to teach the tool)',
+          });
+          renderResults();
+        }
+        if (toQueue.length === 0) continue;
+        const r = await api('/api/request-actions', { method: 'POST', body: JSON.stringify({ role, usernames: toQueue }) });
+        totalQueued += r.jobs.length;
+        for (const j of r.jobs) {
+          state.jobsByUsername.set(j.username, { jobId: j.jobId, role, status: 'pending' });
+        }
       }
-      if (toQueue.length === 0) continue;
-      try {
-        await api('/api/request-actions', { method: 'POST', body: JSON.stringify({ role, usernames: toQueue }) });
-      } catch (err) {
-        alert(err.message);
+      renderResults();
+      if (totalQueued > 0) {
+        const bridgeNote = state.bridgeConnected
+          ? 'Watch the Status column below as your threads.net tab works through them.'
+          : "Your bridge doesn't look connected right now (see the banner above) — they'll stay \"pending\" until it is.";
+        showToast(`Queued ${totalQueued} action(s). ${bridgeNote}`);
       }
+    } catch (err) {
+      alert(`Something went wrong: ${err.message}`);
     }
   }
   $('#block-selected').addEventListener('click', () => runBulkAction(['block']));
