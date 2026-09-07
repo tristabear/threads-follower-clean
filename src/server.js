@@ -3,19 +3,6 @@ const express = require('express');
 const { Store } = require('./store');
 const { evaluateAccount } = require('./heuristics');
 
-const ALLOWED_BRIDGE_ORIGINS = /^https:\/\/(www\.)?threads\.(net|com)$/;
-
-function bridgeCors(req, res, next) {
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_BRIDGE_ORIGINS.test(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  }
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-}
-
 function classifyGuessType(method, url) {
   const u = url.toLowerCase();
   if (method === 'GET') return 'read';
@@ -43,9 +30,10 @@ function createApp(port) {
     res.type('application/javascript').send(rendered);
   });
 
-  // --- Endpoints called cross-origin, from the console bridge on threads.net ---
-  app.options('/api/ingest', bridgeCors);
-  app.post('/api/ingest', bridgeCors, (req, res) => {
+  // --- Endpoints called same-origin, from the relay popup (which itself
+  // relays via postMessage from the bridge script running on threads.net —
+  // threads.net's own CSP blocks that tab from fetching 127.0.0.1 directly) ---
+  app.post('/api/ingest', (req, res) => {
     const { method, url, requestHeaders, requestBody, responseBody, ts } = req.body || {};
     if (!url) return res.status(400).json({ error: 'missing url' });
 
@@ -69,8 +57,7 @@ function createApp(port) {
     res.json({ ok: true, harvested });
   });
 
-  app.options('/api/pending-jobs', bridgeCors);
-  app.get('/api/pending-jobs', bridgeCors, (req, res) => {
+  app.get('/api/pending-jobs', (req, res) => {
     const profileFetchUsernames = store.drainProfileFetchQueue(15);
     const actionJobs = store.drainActionJobs(5);
     res.json({
@@ -80,8 +67,7 @@ function createApp(port) {
     });
   });
 
-  app.options('/api/complete-job', bridgeCors);
-  app.post('/api/complete-job', bridgeCors, (req, res) => {
+  app.post('/api/complete-job', (req, res) => {
     const { jobId, status, detail } = req.body || {};
     const job = store.completeActionJob(jobId, status, detail);
     res.json({ ok: true, found: !!job });
@@ -100,6 +86,7 @@ function createApp(port) {
       taggedTemplates: {
         block: !!store.taggedTemplates.block,
         report: !!store.taggedTemplates.report,
+        profile_info: !!store.taggedTemplates.profile_info,
       },
       pendingActionJobs: store.actionJobs.filter((j) => j.status === 'pending' || j.status === 'dispatched').length,
     });

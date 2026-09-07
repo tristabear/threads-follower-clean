@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>threads-bot-filter relay</title>
+<style>
+  body { font: 13px system-ui, sans-serif; padding: 16px; background: #14141a; color: #ececec; }
+  h1 { font-size: 14px; }
+  #log { font: 11px ui-monospace, monospace; white-space: pre-wrap; color: #9a9aa5; max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>threads-bot-filter relay — keep this window open</h1>
+<p>This small window forwards data between your threads.net tab and the local
+tool. It's needed because threads.net's own security policy blocks that tab
+from talking to <code>127.0.0.1</code> directly, so this same-origin window
+relays it instead. You can minimize it, just don't close it.</p>
+<div id="log"></div>
+<script src="relay.js"></script>
+</body>
+</html>

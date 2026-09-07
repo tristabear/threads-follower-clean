@@ -21,18 +21,27 @@ tab**:
    that page, so it never touches your password or session cookie — the
    browser attaches those automatically to requests, exactly like it does
    when you click a button.
-2. As you scroll your followers list, the script forwards the JSON your own
-   tab is already receiving to the local server on your machine
-   (`http://127.0.0.1:4173`), which extracts follower profile data from it.
-3. To learn how *your current app version* actually blocks/reports someone,
+2. threads.net's own Content-Security-Policy blocks that tab from making
+   network requests straight to `127.0.0.1`, so the script opens a small
+   same-origin "relay" popup (served by the local tool itself) and talks to
+   it via `postMessage`, which CSP doesn't govern. The relay does the actual
+   localhost fetch on its own same-origin page. Allow the popup and leave it
+   open (it can be minimized).
+3. As you scroll your followers list, the script forwards the JSON your own
+   tab is already receiving, through the relay, to the local server on your
+   machine (`http://127.0.0.1:4173`), which extracts follower profile data
+   from it.
+4. To learn how *your current app version* actually blocks/reports someone,
    you perform each action **once, manually**, on an obvious test account,
    while the script is running. It captures that exact request and lets you
    "tag" it as the block/report template. Later bulk actions replay that
    same template with a different target ID — nothing is guessed or
    hard-coded.
-4. Everything that mutates your account (block, report) happens as a fetch
-   from your real threads.net tab, so it's rate-limited with randomized
-   delays between actions to look and behave like normal manual use.
+5. Everything that mutates your account (block, report) happens as a fetch
+   from your real threads.net tab straight to threads.net's own API — that
+   part is same-origin, so it doesn't need the relay, and it's rate-limited
+   with randomized delays between actions to look and behave like normal
+   manual use.
 
 **Caveats you should actually read:**
 

@@ -7,6 +7,11 @@
  *  - It wraps this tab's fetch()/XMLHttpRequest so it can also forward a copy
  *    of same-site JSON traffic to your local threads-bot-filter server
  *    (http://127.0.0.1:__LOCAL_SERVER_PORT__), running on YOUR machine.
+ *  - threads.net's own Content-Security-Policy blocks this tab from making
+ *    network requests straight to 127.0.0.1, so instead this opens a small
+ *    same-origin "relay" popup (served by your local tool) and talks to it
+ *    via postMessage, which CSP doesn't govern. The relay does the actual
+ *    localhost fetch on its own same-origin page. Leave that popup open.
  *  - It never reads or transmits your cookies. It doesn't need to: because
  *    it runs inside the real threads.net tab, the browser attaches your
  *    session automatically to every request it replays, same as if you'd
@@ -23,6 +28,8 @@
   const POLL_INTERVAL_MS = 4000;
   const MIN_ACTION_DELAY_MS = 1500;
   const MAX_ACTION_DELAY_MS = 3500;
+  const RPC_TIMEOUT_MS = 4000;
+  const RPC_MAX_ATTEMPTS = 4;
 
   if (window.__tfBridge && window.__tfBridge._active) {
     console.log('[threads-bot-filter] bridge already running. Use __tfBridge.stop() first if you want to restart it.');
@@ -42,13 +49,62 @@
     return MIN_ACTION_DELAY_MS + Math.random() * (MAX_ACTION_DELAY_MS - MIN_ACTION_DELAY_MS);
   }
 
-  function safeIngest(payload) {
-    // Fire-and-forget; never let this break the page.
-    originalFetch(`${BASE}/api/ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }).catch(() => {});
+  // --- Relay popup + postMessage RPC (threads.net's CSP blocks direct fetch
+  // from this tab to 127.0.0.1, so we go through a same-origin popup instead) ---
+  let relayWindow = null;
+  let rpcCounter = 0;
+  const pendingRpcs = new Map();
+
+  function openRelay() {
+    relayWindow = window.open(`${BASE}/relay.html`, 'tf-relay', 'width=420,height=260');
+    if (!relayWindow) {
+      console.error('[threads-bot-filter] popup blocked. Allow popups for threads.net, then run __tfBridge.openRelay() again.');
+      return false;
+    }
+    return true;
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== relayWindow) return;
+    const { rpcId, result } = event.data || {};
+    const pending = pendingRpcs.get(rpcId);
+    if (!pending) return;
+    pendingRpcs.delete(rpcId);
+    clearTimeout(pending.timeoutHandle);
+    pending.resolve(result);
+  });
+
+  function rpcOnce(type, payload, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      if (!relayWindow || relayWindow.closed) {
+        reject(new Error('relay window not open'));
+        return;
+      }
+      const rpcId = `${Date.now()}-${rpcCounter++}`;
+      const timeoutHandle = setTimeout(() => {
+        pendingRpcs.delete(rpcId);
+        reject(new Error(`rpc "${type}" timed out`));
+      }, timeoutMs);
+      pendingRpcs.set(rpcId, { resolve, timeoutHandle });
+      relayWindow.postMessage({ rpcId, type, payload }, BASE);
+    });
+  }
+
+  async function rpc(type, payload) {
+    let lastErr;
+    for (let attempt = 0; attempt < RPC_MAX_ATTEMPTS; attempt++) {
+      if (!relayWindow || relayWindow.closed) {
+        if (!openRelay()) throw new Error('relay popup unavailable');
+        await sleep(600); // give the popup a moment to load before first send
+      }
+      try {
+        return await rpcOnce(type, payload, RPC_TIMEOUT_MS);
+      } catch (err) {
+        lastErr = err;
+        await sleep(500);
+      }
+    }
+    throw lastErr;
   }
 
   function headersToObject(headers) {
@@ -66,6 +122,10 @@
     if (url.startsWith(BASE)) return false; // never loop back on ourselves
     if (contentType && !contentType.includes('json')) return false;
     return true;
+  }
+
+  function safeIngest(payload) {
+    rpc('ingest', payload).catch((err) => console.warn('[threads-bot-filter] ingest relay failed:', err));
   }
 
   // --- fetch() wrapper ---
@@ -137,6 +197,9 @@
     return out;
   }
 
+  // These run as ordinary requests from the threads.net tab to threads.net's
+  // own API — same-origin, so unaffected by the CSP issue the relay works
+  // around. No relay needed here.
   async function runTemplate(template, target) {
     const url = substitute(template.url, target.pk, target.username);
     const body = template.body !== undefined ? substitute(template.body, target.pk, target.username) : undefined;
@@ -159,8 +222,7 @@
   async function pollLoop() {
     while (!stopped) {
       try {
-        const res = await originalFetch(`${BASE}/api/pending-jobs`);
-        const { profileFetchUsernames, actionJobs, templates } = await res.json();
+        const { profileFetchUsernames, actionJobs, templates } = await rpc('pending-jobs', {});
 
         if (profileFetchUsernames && profileFetchUsernames.length) {
           if (!templates.profile_info) {
@@ -201,15 +263,12 @@
   }
 
   function safeCompleteJob(jobId, status, detail) {
-    originalFetch(`${BASE}/api/complete-job`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, status, detail }),
-    }).catch(() => {});
+    rpc('complete-job', { jobId, status, detail }).catch((err) => console.warn('[threads-bot-filter] complete-job relay failed:', err));
   }
 
   window.__tfBridge = {
     _active: true,
+    openRelay,
     stop() {
       stopped = true;
       window.fetch = originalFetch;
@@ -221,6 +280,9 @@
     },
   };
 
+  if (!openRelay()) {
+    console.warn('[threads-bot-filter] continuing without a relay for now — run __tfBridge.openRelay() once you\'ve allowed popups.');
+  }
   pollLoop();
-  console.log(`[threads-bot-filter] bridge active, talking to ${BASE}. Scroll your followers list to capture accounts. Open the local UI to continue.`);
+  console.log(`[threads-bot-filter] bridge active. A relay popup should have opened — keep it open. Scroll your followers list to capture accounts, then check the local UI tab.`);
 })();
