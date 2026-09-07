@@ -12,6 +12,39 @@ function classifyGuessType(method, url) {
   return 'other-write';
 }
 
+// Threads' web app (like most of Meta's stack) routes nearly everything
+// through one GraphQL endpoint, so the URL alone can't tell block apart
+// from report apart from viewing a profile. Pull whatever identifying hints
+// we can out of the request/response instead, so a human can tell them
+// apart without needing DevTools open themselves.
+function extractOperationHint(requestBody, responseBody) {
+  const hints = new Set();
+
+  if (typeof requestBody === 'string') {
+    try {
+      const params = new URLSearchParams(requestBody);
+      const friendlyName = params.get('fb_api_req_friendly_name') || params.get('operationName');
+      if (friendlyName) hints.add(friendlyName);
+      const docId = params.get('doc_id');
+      if (docId) hints.add(`doc_id:${docId}`);
+    } catch {
+      // not form-encoded, ignore
+    }
+    try {
+      const asJson = JSON.parse(requestBody);
+      if (asJson.operationName) hints.add(asJson.operationName);
+    } catch {
+      // not JSON, ignore
+    }
+  }
+
+  if (responseBody && typeof responseBody === 'object' && responseBody.data && typeof responseBody.data === 'object') {
+    for (const key of Object.keys(responseBody.data)) hints.add(key);
+  }
+
+  return Array.from(hints).join(', ');
+}
+
 function accountSummary(account) {
   const { matches, unknownRules } = evaluateAccount(account);
   return { ...account, matches, unknownRules };
@@ -43,12 +76,15 @@ function createApp(port) {
     }
 
     if (method && method !== 'GET') {
+      const normalizedBody = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || {});
       store.recordActionRequest({
         ts: ts || Date.now(),
         method,
         url,
         requestHeaders,
-        requestBody: typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || {}),
+        requestBody: normalizedBody,
+        responseSnippet: responseBody ? JSON.stringify(responseBody).slice(0, 500) : null,
+        operationHint: extractOperationHint(normalizedBody, responseBody),
         guessType: classifyGuessType(method, url),
       });
     }
@@ -104,6 +140,9 @@ function createApp(port) {
       url: r.url,
       guessType: r.guessType,
       taggedRole: r.taggedRole,
+      operationHint: r.operationHint,
+      bodyPreview: (r.requestBody || '').slice(0, 400),
+      responseSnippet: r.responseSnippet,
     })));
   });
 

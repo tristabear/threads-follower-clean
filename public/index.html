@@ -37,8 +37,9 @@
   <section class="card" id="step3">
     <h2>3. Record your actions (one-time)</h2>
     <p>So this tool can replay Block/Report exactly the way your account currently does it, perform each action <strong>once manually</strong> on threads.net while the bridge is running (e.g. on an obvious spam account), then tag the captured request below. Also open any one follower's profile page to capture a "profile info" template (needed for step 2's detail-fetch button).</p>
+    <p class="hint">Threads routes almost everything through one <code>/graphql/query</code> endpoint, so the URL won't tell requests apart — one manual action can also fire off several requests (the mutation itself, plus refetches/logging). Do the 3 actions <strong>one at a time, in order</strong> (e.g. block, wait a couple seconds, then report, wait, then view a profile), and use the timestamp plus the Hint/Preview columns below to work out which row is which — hover a preview to see the full captured body/response.</p>
     <table class="requests-table">
-      <thead><tr><th>Method</th><th>URL</th><th>Guess</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
+      <thead><tr><th>When</th><th>Method</th><th>Hint</th><th>Body / response preview</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
       <tbody id="requests-body"></tbody>
     </table>
     <div class="template-status">

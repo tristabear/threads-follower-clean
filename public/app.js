@@ -76,10 +76,13 @@
       body.innerHTML = '';
       for (const r of reqs.slice().reverse()) {
         const tr = document.createElement('tr');
+        const fullPreview = `REQUEST BODY:\n${r.bodyPreview || '(empty)'}\n\nRESPONSE:\n${r.responseSnippet || '(empty/non-JSON)'}`;
+        const previewLine = r.bodyPreview ? truncate(r.bodyPreview.replace(/\s+/g, ' '), 70) : '(empty body)';
         tr.innerHTML = `
+          <td>${escapeHtml(timeAgo(r.ts))}</td>
           <td>${r.method}</td>
-          <td title="${escapeHtml(r.url)}">${escapeHtml(truncate(r.url, 60))}</td>
-          <td>${r.guessType || ''}</td>
+          <td>${r.operationHint ? `<strong>${escapeHtml(r.operationHint)}</strong>` : '<span class="hint">none found</span>'}</td>
+          <td class="preview-cell" title="${escapeHtml(fullPreview)}"><code>${escapeHtml(previewLine)}</code></td>
           <td>
             <button data-role="block">Block</button>
             <button data-role="report">Report</button>
@@ -229,6 +232,13 @@
   $('#block-report-selected').addEventListener('click', () => runBulkAction(['block', 'report']));
 
   function truncate(s, n) { return s.length > n ? `${s.slice(0, n)}…` : s; }
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const secs = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+    return new Date(ts).toLocaleTimeString();
+  }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
