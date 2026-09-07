@@ -4,6 +4,33 @@ A local tool to flag likely bot/spam followers on **your own** Threads
 account, and bulk block (or block + report) the ones you select — after you
 review them.
 
+## Sharing this with someone non-technical
+
+If you're sending this to a friend who doesn't use git or a terminal, give
+them this instead of the git-clone instructions below:
+
+1. On the GitHub page for this repo, click the green **Code** button →
+   **Download ZIP**.
+2. Unzip it (double-click the `.zip` on Mac; right-click → **Extract All**
+   on Windows).
+3. Double-click **`start.command`** (Mac) or **`start.bat`** (Windows)
+   inside the unzipped folder.
+4. A window opens and does everything: checks for Node.js (and points to
+   the download page if it's missing — they'll need to install that once,
+   then double-click the launcher again), installs what the tool needs the
+   first time, starts it, and opens their browser to it automatically.
+5. That window has to stay open (it can be minimized) while they use the
+   tool — closing it stops the tool. They'll still need to follow the
+   in-page steps themselves (pasting the bridge script into threads.com's
+   console etc.) — the launcher only handles getting the tool itself
+   running, not the Threads side of the setup.
+
+**Mac only:** the first double-click may show a warning about an
+"unidentified developer" — that's normal for a script downloaded from the
+internet, not a sign anything's wrong. Right-click `start.command` and
+choose **Open** instead of double-clicking, and it'll offer an "Open
+anyway" option that a plain double-click doesn't.
+
 ## Read this first: how it actually works, and the risk
 
 Meta doesn't publish a followers list, block, or report API for Threads. The
@@ -98,6 +125,10 @@ tab**:
 
 ## Setup
 
+(Rather skip git/terminal entirely? See "Sharing this with someone
+non-technical" above — same tool, just double-click `start.command` or
+`start.bat` instead of the commands below.)
+
 ```bash
 npm install
 npm start
@@ -180,6 +211,7 @@ Rules live in `src/heuristics.js` if you want to tune the thresholds.
 ## Project layout
 
 ```
+start.command, start.bat   double-click launchers (no git/terminal needed)
 bin/cli.js          entry point — starts the local server
 src/server.js        Express app: status/accounts/tagging/job APIs
 src/store.js          in-memory account store + generic JSON extractor
