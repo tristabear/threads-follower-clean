@@ -64,8 +64,8 @@ function createApp(port) {
   });
 
   // --- Endpoints called same-origin, from the relay popup (which itself
-  // relays via postMessage from the bridge script running on threads.net —
-  // threads.net's own CSP blocks that tab from fetching 127.0.0.1 directly) ---
+  // relays via postMessage from the bridge script running on threads.com —
+  // threads.com's own CSP blocks that tab from fetching 127.0.0.1 directly) ---
   app.post('/api/ingest', (req, res) => {
     const { method, url, requestHeaders, requestBody, responseBody, ts } = req.body || {};
     if (!url) return res.status(400).json({ error: 'missing url' });
@@ -93,7 +93,7 @@ function createApp(port) {
 
     // "Teach it" mode: the local UI armed recording (see /api/start-recording)
     // right before asking the user to manually block/report/view-a-profile on
-    // threads.net. The very next write request we see is almost certainly
+    // threads.com. The very next write request we see is almost certainly
     // that action, so tag it automatically — no manual matching required.
     if (store.recording && recordedRequest) {
       const target = store.getAccountByUsername(store.recording.targetUsername);
@@ -237,7 +237,7 @@ function createApp(port) {
   app.post('/api/request-actions', (req, res) => {
     const { role, usernames } = req.body || {};
     if (role !== 'block' && role !== 'report') return res.status(400).json({ error: 'role must be block or report' });
-    if (!store.taggedTemplates[role]) return res.status(400).json({ error: `no ${role} template recorded yet — perform that action once on threads.net while the bridge is running` });
+    if (!store.taggedTemplates[role]) return res.status(400).json({ error: `no ${role} template recorded yet — perform that action once on threads.com while the bridge is running` });
     if (!Array.isArray(usernames) || usernames.length === 0) return res.status(400).json({ error: 'usernames must be a non-empty array' });
 
     const targets = [];

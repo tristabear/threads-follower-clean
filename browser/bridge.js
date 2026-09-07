@@ -1,19 +1,19 @@
 /* threads-bot-filter browser bridge
  *
  * Paste this whole file into the DevTools console while you're on
- * https://www.threads.net (or threads.com), logged in as yourself.
+ * https://www.threads.com, logged in as yourself.
  *
  * What it does, and does NOT do:
  *  - It wraps this tab's fetch()/XMLHttpRequest so it can also forward a copy
  *    of same-site JSON traffic to your local threads-bot-filter server
  *    (http://127.0.0.1:__LOCAL_SERVER_PORT__), running on YOUR machine.
- *  - threads.net's own Content-Security-Policy blocks this tab from making
+ *  - threads.com's own Content-Security-Policy blocks this tab from making
  *    network requests straight to 127.0.0.1, so instead this opens a small
  *    same-origin "relay" popup (served by your local tool) and talks to it
  *    via postMessage, which CSP doesn't govern. The relay does the actual
  *    localhost fetch on its own same-origin page. Leave that popup open.
  *  - It never reads or transmits your cookies. It doesn't need to: because
- *    it runs inside the real threads.net tab, the browser attaches your
+ *    it runs inside the real threads.com tab, the browser attaches your
  *    session automatically to every request it replays, same as if you'd
  *    clicked the button yourself.
  *  - It does not act on its own. Blocking/reporting only happens for
@@ -49,7 +49,7 @@
     return MIN_ACTION_DELAY_MS + Math.random() * (MAX_ACTION_DELAY_MS - MIN_ACTION_DELAY_MS);
   }
 
-  // --- Relay popup + postMessage RPC (threads.net's CSP blocks direct fetch
+  // --- Relay popup + postMessage RPC (threads.com's CSP blocks direct fetch
   // from this tab to 127.0.0.1, so we go through a same-origin popup instead) ---
   let relayWindow = null;
   let rpcCounter = 0;
@@ -58,7 +58,7 @@
   function openRelay() {
     relayWindow = window.open(`${BASE}/relay.html`, 'tf-relay', 'width=420,height=260');
     if (!relayWindow) {
-      console.error('[threads-bot-filter] popup blocked. Allow popups for threads.net, then run __tfBridge.openRelay() again.');
+      console.error('[threads-bot-filter] popup blocked. Allow popups for threads.com, then run __tfBridge.openRelay() again.');
       return false;
     }
     return true;
@@ -280,7 +280,7 @@
     return { ok: res.ok, json };
   }
 
-  // These run as ordinary requests from the threads.net tab to threads.net's
+  // These run as ordinary requests from the threads.com tab to threads.com's
   // own API — same-origin, so unaffected by the CSP issue the relay works
   // around. No relay needed here.
   async function runTemplate(template, target) {

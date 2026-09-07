@@ -27,14 +27,14 @@
   }
   $('#copy-bridge').addEventListener('click', async () => {
     await navigator.clipboard.writeText($('#bridge-script').value);
-    $('#copy-confirm').textContent = 'Copied! Paste it into the threads.net console.';
+    $('#copy-confirm').textContent = 'Copied! Paste it into the threads.com console.';
     setTimeout(() => { $('#copy-confirm').textContent = ''; }, 4000);
   });
 
   // --- Bridge connectivity banner ---
   // The bridge's poll loop hits /api/pending-jobs roughly every 4s while
   // it's running — but browsers throttle JS timers in tabs that aren't in
-  // the foreground (to save battery/CPU), so if the threads.net/threads.com
+  // the foreground (to save battery/CPU), so if the threads.com
   // tab isn't the one you're actively looking at, its poll interval can
   // stretch to well past 4s even though nothing is actually broken. So we
   // treat a short gap as "probably just throttled" and only call it
@@ -53,15 +53,15 @@
       // and throttled. Still usable, just slower.
       state.bridgeConnected = true;
       el.className = 'bridge-status throttled';
-      el.textContent = `● Bridge: slow to respond (last seen ${timeAgo(s.lastPollAt)}) — probably just backgrounded; click into the threads.net tab to wake it up`;
+      el.textContent = `● Bridge: slow to respond (last seen ${timeAgo(s.lastPollAt)}) — probably just backgrounded; click into the threads.com tab to wake it up`;
     } else if (s.lastPollAt) {
       state.bridgeConnected = false;
       el.className = 'bridge-status disconnected';
-      el.textContent = `● Bridge: not responding (last seen ${timeAgo(s.lastPollAt)}) — click into the threads.net tab (browsers pause background tabs), and check the relay popup is still open and hasn't errored`;
+      el.textContent = `● Bridge: not responding (last seen ${timeAgo(s.lastPollAt)}) — click into the threads.com tab (browsers pause background tabs), and check the relay popup is still open and hasn't errored`;
     } else {
       state.bridgeConnected = false;
       el.className = 'bridge-status unknown';
-      el.textContent = '● Bridge: not connected yet — paste the script into your threads.net console (step 1)';
+      el.textContent = '● Bridge: not connected yet — paste the script into your threads.com console (step 1)';
     }
   }
 
@@ -100,7 +100,7 @@
     if (!ok) { $('#fetch-missing-hint').textContent = 'Cancelled.'; return; }
     try {
       const r = await api('/api/request-profile-fetch', { method: 'POST', body: JSON.stringify({ usernames: missing }) });
-      $('#fetch-missing-hint').textContent = `Queued ${r.queued}. Keep the threads.net tab open — the bridge will fetch them with delays between each.`;
+      $('#fetch-missing-hint').textContent = `Queued ${r.queued}. Keep the threads.com tab open — the bridge will fetch them with delays between each.`;
     } catch (err) {
       $('#fetch-missing-hint').textContent = `Error: ${err.message}`;
     }
@@ -108,7 +108,7 @@
 
   // --- Guided "teach it" modal: used the first time block/report/profile_info
   // is needed. Arms server-side recording, tells the user exactly what to do
-  // on threads.net, and polls until the action is auto-detected & tagged. ---
+  // on threads.com, and polls until the action is auto-detected & tagged. ---
   async function ensureTemplate(role, exampleUsername) {
     const status = await api('/api/status');
     if (status.taggedTemplates[role]) return { ok: true, recorded: false };
@@ -123,8 +123,8 @@
       ? 'One-time: teach the tool how to view a profile'
       : `One-time: teach the tool how you ${role}`;
     $('#record-modal-body').innerHTML = role === 'profile_info'
-      ? `Go to your threads.net tab (the one running the bridge) and open <strong>@${escapeHtml(username)}</strong>'s profile. You don't need to do anything else — we'll detect it automatically.`
-      : `Go to your threads.net tab (the one running the bridge), open <strong>@${escapeHtml(username)}</strong>'s profile, and click <strong>${actionLabel}</strong>. We'll detect it automatically and handle the rest of your selection for you.`;
+      ? `Go to your threads.com tab (the one running the bridge) and open <strong>@${escapeHtml(username)}</strong>'s profile. You don't need to do anything else — we'll detect it automatically.`
+      : `Go to your threads.com tab (the one running the bridge), open <strong>@${escapeHtml(username)}</strong>'s profile, and click <strong>${actionLabel}</strong>. We'll detect it automatically and handle the rest of your selection for you.`;
     $('#record-modal-status').textContent = 'Waiting for your action…';
     modal.hidden = false;
 
@@ -263,7 +263,7 @@
 
       tr.innerHTML = `
         <td><input type="checkbox" class="row-select" ${checked} /></td>
-        <td><a href="https://www.threads.net/@${encodeURIComponent(a.username)}" target="_blank" rel="noopener">@${escapeHtml(a.username)}</a></td>
+        <td><a href="https://www.threads.com/@${encodeURIComponent(a.username)}" target="_blank" rel="noopener">@${escapeHtml(a.username)}</a></td>
         <td>${escapeHtml(a.full_name || '')}</td>
         <td>${a.follower_count ?? '?'}</td>
         <td>${a.following_count ?? '?'}</td>
@@ -311,12 +311,12 @@
     if (!state.bridgeConnected) {
       const proceed = confirm(
         "The bridge doesn't look connected right now (see the banner at the top of the page) — "
-        + 'nothing will actually run on threads.net until it is, including the one-time "teach it" step. '
+        + 'nothing will actually run on threads.com until it is, including the one-time "teach it" step. '
         + 'Continue anyway (e.g. because you just pasted the script and it hasn\'t checked in yet)?',
       );
       if (!proceed) return;
     }
-    if (!confirm(`${roles.join(' + ')} ${usernames.length} account(s)? This will be executed from your threads.net tab.`)) return;
+    if (!confirm(`${roles.join(' + ')} ${usernames.length} account(s)? This will be executed from your threads.com tab.`)) return;
 
     try {
       let totalQueued = 0;

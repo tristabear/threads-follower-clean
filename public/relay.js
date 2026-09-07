@@ -1,5 +1,5 @@
-// Relays RPC calls from the threads.net bridge script (which can't reach
-// 127.0.0.1 directly due to threads.net's own CSP) to this server, via
+// Relays RPC calls from the threads.com bridge script (which can't reach
+// 127.0.0.1 directly due to threads.com's own CSP) to this server, via
 // window.postMessage — postMessage isn't subject to CSP's connect-src, and
 // this page's own fetch() calls are same-origin so they aren't either.
 
@@ -54,4 +54,4 @@ async function handle(type, payload) {
   throw new Error(`unknown rpc type "${type}"`);
 }
 
-log('relay ready, waiting for the threads.net tab...');
+log('relay ready, waiting for the threads.com tab...');

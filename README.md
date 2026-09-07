@@ -17,11 +17,11 @@ Instead, it works entirely through **your own already-logged-in browser
 tab**:
 
 1. You paste a small script (`browser/bridge.js`, served from the local
-   tool) into your DevTools console while on threads.net. It runs inside
+   tool) into your DevTools console while on threads.com. It runs inside
    that page, so it never touches your password or session cookie — the
    browser attaches those automatically to requests, exactly like it does
    when you click a button.
-2. threads.net's own Content-Security-Policy blocks that tab from making
+2. threads.com's own Content-Security-Policy blocks that tab from making
    network requests straight to `127.0.0.1`, so the script opens a small
    same-origin "relay" popup (served by the local tool itself) and talks to
    it via `postMessage`, which CSP doesn't govern. The relay does the actual
@@ -36,12 +36,12 @@ tab**:
    find a raw request table to do it. The first time you click "Block" (or
    "Report") on a selection in the local UI, it walks you through it: it
    tells you which one account (from your selection) to act on by hand on
-   threads.net, watches for that action, and tags it automatically the
+   threads.com, watches for that action, and tags it automatically the
    moment it sees it. Every click after that just works. Later bulk actions
    replay that captured template with a different target ID — nothing is
    guessed or hard-coded.
 5. Everything that mutates your account (block, report) happens as a fetch
-   from your real threads.net tab straight to threads.net's own API — that
+   from your real threads.com tab straight to threads.com's own API — that
    part is same-origin, so it doesn't need the relay, and it's rate-limited
    with randomized delays between actions to look and behave like normal
    manual use.
@@ -106,10 +106,10 @@ npm start
 Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
 
 1. **Connect your browser** — copy the bridge script, paste it into
-   DevTools console on threads.net. Watch the banner at the top of the page
+   DevTools console on threads.com. Watch the banner at the top of the page
    turn green ("Bridge: connected") — if it doesn't, nothing past this point
    will work, so that's the first thing to check if something seems stuck.
-2. **Capture your followers** — open your followers list on threads.net and
+2. **Capture your followers** — open your followers list on threads.com and
    leave it open; the bridge scrolls it automatically (keep that tab in the
    foreground, not backgrounded — see the throttling note below). Watch the
    counters go up on the local page. Click **"Fetch details for accounts
@@ -130,7 +130,7 @@ Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
 That's genuinely it for day-to-day use. The "teach it your block/report"
 step isn't a separate thing you have to understand — it only shows up
 *inside* step 2/3, the first time you click a button that needs it: a modal
-tells you exactly which one account to act on manually on threads.net, and
+tells you exactly which one account to act on manually on threads.com, and
 detects and learns from it automatically. If it ever seems to learn the
 wrong thing (rare, but Threads batches several network calls per click),
 there's a small **"Reset what this tool has learned"** link at the bottom of
@@ -141,14 +141,14 @@ again next time you need it.
 
 This is almost always browser tab throttling, not an actual break: browsers
 slow down JavaScript timers in tabs you're not actively looking at, to save
-battery/CPU. If you switch away from the threads.net/threads.com tab (e.g.
+battery/CPU. If you switch away from the threads.com tab (e.g.
 to look at this local page), its poll loop can go quiet for well past the
 few-seconds cadence it normally runs at — the banner will show amber
 ("slow to respond") first, and only turns red after a much longer silence.
 Click back into that tab for a few seconds and it'll catch back up. There's
 no code-level fix for this — it's a deliberate browser power-saving
 behavior that affects any tool built this way (a pasted script has no way
-to keep its own tab "awake"). Keeping the threads.net tab visible (even in
+to keep its own tab "awake"). Keeping the threads.com tab visible (even in
 a side-by-side window instead of switching between full-screen tabs) avoids
 it entirely.
 
@@ -156,7 +156,7 @@ If the banner stays red for a long time even with the tab focused, check:
 the relay popup hasn't thrown an error (open its own DevTools console),
 you re-pasted the bridge script after the last `git pull` (an old pasted
 copy doesn't update itself), and popups are actually allowed for
-threads.net/threads.com in your browser's site settings.
+threads.com in your browser's site settings.
 
 ## The five rules
 
@@ -180,10 +180,10 @@ src/server.js        Express app: status/accounts/tagging/job APIs
 src/store.js          in-memory account store + generic JSON extractor
 src/heuristics.js     the 5 detection rules
 src/animalNames.js    word list for rule (a)
-browser/bridge.js     the console script pasted into threads.net
+browser/bridge.js     the console script pasted into threads.com
 public/index.html,app.js,style.css   the local web UI
 public/relay.html,relay.js            same-origin popup that gets the
-                                       bridge past threads.net's CSP
+                                       bridge past threads.com's CSP
 ```
 
 ## Prior art
