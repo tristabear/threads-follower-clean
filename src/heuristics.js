@@ -18,11 +18,13 @@ function escapeRegExp(s) {
 }
 
 const ANIMAL_ALTERNATION = ALL_ANIMAL_WORDS.map(escapeRegExp).join('|');
-// e.g. "tiger123", "tiger_123", "tiger.42", "貓咪99" — animal word optionally
-// followed by a separator, then 1-6 digits, anchored to the whole username
-// (allowing a leading/trailing underscore/dot which Threads usernames allow).
+// e.g. "tiger123", "tiger_123", "tiger.42", "貓咪99", "gecko.52078145" — animal
+// word optionally followed by a separator, then 1-10 digits (bot-factory
+// suffixes run longer than a typical handmade "123"), anchored to the whole
+// username (allowing a leading/trailing underscore/dot which Threads
+// usernames allow).
 const ANIMAL_NUMBER_RE = new RegExp(
-  `^[_.]?(${ANIMAL_ALTERNATION})[_.]?\\d{1,6}[_.]?$`,
+  `^[_.]?(${ANIMAL_ALTERNATION})[_.]?\\d{1,10}[_.]?$`,
   'i',
 );
 
@@ -119,11 +121,47 @@ function ruleInstagramInBio(account) {
   return null;
 }
 
+// Rule e: username looks like an auto-generated "firstname.lastname + digits"
+// handle (e.g. "daisy.clark18"), AND the display name is essentially just
+// that same name restated — the bot never bothered to customize it. Compare
+// only the alphabetic "first last" portion so near-misses like username
+// "grace.jackson107" / name "grace.jackson10" (same base name, different
+// trailing digits) still count — that mismatch is itself part of the
+// bot-factory fingerprint, not a reason to treat them as unrelated.
+const NAME_HANDLE_RE = /^[a-z]{2,}\.[a-z]{2,}\d{0,6}$/i;
+
+function nameBase(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\d+$/, '')
+    .replace(/[._]+/g, ' ')
+    .trim();
+}
+
+function ruleGeneratedNamePattern(account) {
+  const uname = account.username || '';
+  const fullName = account.full_name;
+  if (fullName === undefined) {
+    return { unknown: true };
+  }
+  if (!NAME_HANDLE_RE.test(uname)) return null;
+  const base = nameBase(uname);
+  if (!base || !fullName) return null;
+  if (base === nameBase(fullName)) {
+    return {
+      label: 'generated-name',
+      detail: `username "${uname}" and display name "${fullName}" are the same auto-generated name — display name was never customized`,
+    };
+  }
+  return null;
+}
+
 const RULES = [
   { id: 'a', name: 'Animal name + number', fn: ruleAnimalPlusNumber },
   { id: 'b', name: 'Letter + Taiwan mobile format', fn: ruleLetterPlusTaiwanPhone },
   { id: 'c', name: '0 followers / 48-49 following / no photo', fn: ruleEmptyFreshBot },
   { id: 'd', name: 'Instagram linked in bio', fn: ruleInstagramInBio },
+  { id: 'e', name: 'Generated name, username = display name', fn: ruleGeneratedNamePattern },
 ];
 
 // Evaluate all rules against an account. Returns:
