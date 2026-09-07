@@ -32,11 +32,14 @@ tab**:
    machine (`http://127.0.0.1:4173`), which extracts follower profile data
    from it.
 4. To learn how *your current app version* actually blocks/reports someone,
-   you perform each action **once, manually**, on an obvious test account,
-   while the script is running. It captures that exact request and lets you
-   "tag" it as the block/report template. Later bulk actions replay that
-   same template with a different target ID — nothing is guessed or
-   hard-coded.
+   you perform each action **once, manually** — but you don't have to go
+   find a raw request table to do it. The first time you click "Block" (or
+   "Report") on a selection in the local UI, it walks you through it: it
+   tells you which one account (from your selection) to act on by hand on
+   threads.net, watches for that action, and tags it automatically the
+   moment it sees it. Every click after that just works. Later bulk actions
+   replay that captured template with a different target ID — nothing is
+   guessed or hard-coded.
 5. Everything that mutates your account (block, report) happens as a fetch
    from your real threads.net tab straight to threads.net's own API — that
    part is same-origin, so it doesn't need the relay, and it's rate-limited
@@ -76,33 +79,36 @@ npm install
 npm start
 ```
 
-Then open **http://127.0.0.1:4173** — the page walks you through the rest:
+Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
 
 1. **Connect your browser** — copy the bridge script, paste it into
    DevTools console on threads.net.
 2. **Capture your followers** — scroll your followers list on threads.net.
-   Watch the counters go up on the local page.
-3. **Record your actions once** — manually block one test account and
-   report one test account on threads.net (can be the same account, one
-   after the other), and open one follower's profile page. Tag each
-   captured request in the table (block / report / profile info) with the
-   username you just acted on.
-4. Click **"Fetch details for accounts missing data"** to backfill
-   follower/following counts, photo, and bio for everyone captured so far
-   (needed for rules c and d) — this runs through your browser tab with
-   delays, no need to babysit it.
-5. **Filter & review** — check the rule boxes (a/b/c/d), pick "any" or
-   "all", review the labeled table, select the accounts you want to act on,
-   and click **Block selected** or **Block + Report selected**.
+   Watch the counters go up on the local page. Click **"Fetch details for
+   accounts missing data"** to backfill follower/following counts, photo,
+   and bio (needed for rules c and d).
+3. **Filter, select, and act** — check the rule boxes (a-e), pick "any" or
+   "all", review the labeled table, select the accounts you want, and click
+   **Block selected** or **Block + Report selected**.
 
-## The four rules
+That's genuinely it for day-to-day use. The "teach it your block/report"
+step isn't a separate thing you have to understand — it only shows up
+*inside* step 2/3, the first time you click a button that needs it: a modal
+tells you exactly which one account to act on manually on threads.net, and
+detects and learns from it automatically. If it ever seems to learn the
+wrong thing (rare, but Threads batches several network calls per click), an
+**Advanced** section at the bottom of the page lets you inspect exactly what
+was captured and reset a learned action to try again.
+
+## The five rules
 
 | Rule | What it flags |
 |---|---|
-| a | Username matches an animal name + number pattern (e.g. `tiger8842`) |
+| a | Username matches an animal name + number pattern (e.g. `tiger8842`, `gecko.52078145`) |
 | b | Username or display name matches one letter + Taiwan mobile format (e.g. `a0912345678`) |
 | c | 0 followers, following exactly 48 or 49, no profile photo |
 | d | Bio links an Instagram account — flagged for you to manually check if it looks freshly created |
+| e | Username looks like an auto-generated "firstname.lastname+digits" handle and the display name was never customized away from it (e.g. username `daisy.clark18`, name `daisy.clark18`) |
 
 Rule (a)'s word list lives in `src/animalNames.js` — it's a plain JS array,
 extend it (e.g. more Chinese animal words) as you spot new bot patterns.

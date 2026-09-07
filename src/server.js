@@ -75,9 +75,10 @@ function createApp(port) {
       harvested = store.ingestJson(responseBody);
     }
 
+    let recordedRequest = null;
     if (method && method !== 'GET') {
       const normalizedBody = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || {});
-      store.recordActionRequest({
+      recordedRequest = store.recordActionRequest({
         ts: ts || Date.now(),
         method,
         url,
@@ -87,6 +88,22 @@ function createApp(port) {
         operationHint: extractOperationHint(normalizedBody, responseBody),
         guessType: classifyGuessType(method, url),
       });
+    }
+
+    // "Teach it" mode: the local UI armed recording (see /api/start-recording)
+    // right before asking the user to manually block/report/view-a-profile on
+    // threads.net. The very next write request we see is almost certainly
+    // that action, so tag it automatically — no manual matching required.
+    if (store.recording && recordedRequest) {
+      const target = store.getAccountByUsername(store.recording.targetUsername);
+      if (target) {
+        try {
+          store.tagActionRequest(recordedRequest.id, store.recording.role, target);
+        } catch (err) {
+          console.error('[threads-bot-filter] auto-tag failed:', err.message);
+        }
+      }
+      store.recording = null;
     }
 
     store.persist();
@@ -153,6 +170,37 @@ function createApp(port) {
     try {
       const template = store.tagActionRequest(requestId, role, target);
       res.json({ ok: true, template });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/start-recording', (req, res) => {
+    const { role, targetUsername } = req.body || {};
+    const target = store.getAccountByUsername(targetUsername || '');
+    if (!target) return res.status(400).json({ error: `no known account for username "${targetUsername}"` });
+    try {
+      store.startRecording(role, target.username);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/cancel-recording', (req, res) => {
+    store.cancelRecording();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/recording-status', (req, res) => {
+    res.json({ recording: store.recording });
+  });
+
+  app.post('/api/clear-template', (req, res) => {
+    const { role } = req.body || {};
+    try {
+      store.clearTemplate(role);
+      res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }

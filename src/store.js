@@ -92,6 +92,7 @@ class Store {
     this.taggedTemplates = { block: null, report: null, profile_info: null };
     this.profileFetchQueue = []; // usernames pending a profile-info fetch
     this.actionJobs = []; // {jobId, role, target:{pk,username}, status}
+    this.recording = null; // {role, targetUsername, startedAt} while "teach it" is armed
     this._nextId = 1;
     this._load();
   }
@@ -171,6 +172,25 @@ class Store {
     this.taggedTemplates[role] = template;
     this.persist();
     return template;
+  }
+
+  startRecording(role, targetUsername) {
+    if (!['block', 'report', 'profile_info'].includes(role)) {
+      throw new Error('role must be "block", "report", or "profile_info"');
+    }
+    this.recording = { role, targetUsername, startedAt: Date.now() };
+  }
+
+  cancelRecording() {
+    this.recording = null;
+  }
+
+  clearTemplate(role) {
+    if (!['block', 'report', 'profile_info'].includes(role)) {
+      throw new Error('role must be "block", "report", or "profile_info"');
+    }
+    this.taggedTemplates[role] = null;
+    this.persist();
   }
 
   listAccounts() {

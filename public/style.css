@@ -120,3 +120,38 @@ th { color: var(--muted); font-weight: 500; }
 .status-cell.failed { color: var(--danger); }
 .status-cell.pending, .status-cell.dispatched { color: var(--muted); }
 a { color: var(--accent); }
+
+details.card summary { cursor: pointer; font-size: 15px; font-weight: 500; }
+details.card[open] summary { margin-bottom: 10px; }
+.reset-tpl {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  font-size: 11px;
+  margin-right: 12px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  z-index: 100;
+}
+.modal-backdrop:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 420px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+.modal h3 { margin-top: 0; }
+.modal p { line-height: 1.5; }
+.modal button { margin-top: 8px; }

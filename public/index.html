@@ -23,7 +23,7 @@
 
   <section class="card" id="step2">
     <h2>2. Capture your followers</h2>
-    <p>On the threads.net tab, go to your profile → Followers, and scroll all the way through the list. Then open a few profiles that look like they might be bots (this helps capture richer data).</p>
+    <p>On the threads.net tab, go to your profile → Followers, and scroll all the way through the list.</p>
     <div class="status-grid">
       <div><span id="stat-accounts">0</span><label>accounts seen</label></div>
       <div><span id="stat-counts">0</span><label>with follower/following counts</label></div>
@@ -32,26 +32,11 @@
     </div>
     <button id="fetch-missing">Fetch details for accounts missing data</button>
     <span class="hint" id="fetch-missing-hint"></span>
+    <p class="hint">The first time you click this, it'll ask you to open one follower's profile so it can learn how to fetch details — after that it's automatic.</p>
   </section>
 
   <section class="card" id="step3">
-    <h2>3. Record your actions (one-time)</h2>
-    <p>So this tool can replay Block/Report exactly the way your account currently does it, perform each action <strong>once manually</strong> on threads.net while the bridge is running (e.g. on an obvious spam account), then tag the captured request below. Also open any one follower's profile page to capture a "profile info" template (needed for step 2's detail-fetch button).</p>
-    <p class="hint">Threads routes almost everything through one <code>/graphql/query</code> endpoint, so the URL won't tell requests apart — one manual action can also fire off several requests (the mutation itself, plus refetches/logging). Do the 3 actions <strong>one at a time, in order</strong> (e.g. block, wait a couple seconds, then report, wait, then view a profile), and use the timestamp plus the Hint/Preview columns below to work out which row is which — hover a preview to see the full captured body/response.</p>
-    <table class="requests-table">
-      <thead><tr><th>When</th><th>Method</th><th>Hint</th><th>Body / response preview</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
-      <tbody id="requests-body"></tbody>
-    </table>
-    <div class="template-status">
-      Templates recorded:
-      <span id="tpl-block" class="badge">block ✗</span>
-      <span id="tpl-report" class="badge">report ✗</span>
-      <span id="tpl-profile" class="badge">profile_info ✗</span>
-    </div>
-  </section>
-
-  <section class="card" id="step4">
-    <h2>4. Filter &amp; review</h2>
+    <h2>3. Filter, select, and act</h2>
     <div class="filters">
       <label><input type="checkbox" class="rule-filter" value="a" /> a) animal name + number</label>
       <label><input type="checkbox" class="rule-filter" value="b" /> b) letter + Taiwan mobile format</label>
@@ -75,6 +60,7 @@
       <button id="block-selected" class="danger">Block selected</button>
       <button id="block-report-selected" class="danger">Block + Report selected</button>
     </div>
+    <p class="hint">First time you click Block (or Report), it'll walk you through one manual click on threads.net so it can learn how — after that, selecting accounts and clicking the button is all you need.</p>
 
     <table class="results-table">
       <thead>
@@ -85,7 +71,34 @@
       <tbody id="results-body"></tbody>
     </table>
   </section>
+
+  <details class="card">
+    <summary>Advanced: view raw captured requests, reset a learned action</summary>
+    <p class="hint">You shouldn't need this — it's here for troubleshooting if a guided capture (above) seems to have learned the wrong request.</p>
+    <div class="template-status">
+      Learned actions:
+      <span id="tpl-block" class="badge">block ✗</span>
+      <button class="reset-tpl" data-role="block">reset</button>
+      <span id="tpl-report" class="badge">report ✗</span>
+      <button class="reset-tpl" data-role="report">reset</button>
+      <span id="tpl-profile" class="badge">profile_info ✗</span>
+      <button class="reset-tpl" data-role="profile_info">reset</button>
+    </div>
+    <table class="requests-table">
+      <thead><tr><th>When</th><th>Method</th><th>Hint</th><th>Body / response preview</th><th>Tag as</th><th>Target username</th><th></th></tr></thead>
+      <tbody id="requests-body"></tbody>
+    </table>
+  </details>
 </main>
+
+<div class="modal-backdrop" id="record-modal" hidden>
+  <div class="modal">
+    <h3 id="record-modal-title">One-time: teach the tool</h3>
+    <p id="record-modal-body"></p>
+    <p class="hint" id="record-modal-status">Waiting for your action…</p>
+    <button id="record-modal-cancel">Cancel</button>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

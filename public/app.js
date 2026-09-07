@@ -60,12 +60,80 @@
       $('#fetch-missing-hint').textContent = 'Nothing missing — all captured accounts already have full data.';
       return;
     }
+    const { ok } = await ensureTemplate('profile_info', missing[0]);
+    if (!ok) { $('#fetch-missing-hint').textContent = 'Cancelled.'; return; }
     try {
       const r = await api('/api/request-profile-fetch', { method: 'POST', body: JSON.stringify({ usernames: missing }) });
       $('#fetch-missing-hint').textContent = `Queued ${r.queued}. Keep the threads.net tab open — the bridge will fetch them with delays between each.`;
     } catch (err) {
       $('#fetch-missing-hint').textContent = `Error: ${err.message}`;
     }
+  });
+
+  // --- Guided "teach it" modal: used the first time block/report/profile_info
+  // is needed. Arms server-side recording, tells the user exactly what to do
+  // on threads.net, and polls until the action is auto-detected & tagged. ---
+  async function ensureTemplate(role, exampleUsername) {
+    const status = await api('/api/status');
+    if (status.taggedTemplates[role]) return { ok: true, recorded: false };
+    const ok = await new Promise((resolve) => openRecordModal(role, exampleUsername, resolve));
+    return { ok, recorded: ok };
+  }
+
+  function openRecordModal(role, username, resolve) {
+    const modal = $('#record-modal');
+    const actionLabel = { block: 'Block', report: 'Report' }[role];
+    $('#record-modal-title').textContent = role === 'profile_info'
+      ? 'One-time: teach the tool how to view a profile'
+      : `One-time: teach the tool how you ${role}`;
+    $('#record-modal-body').innerHTML = role === 'profile_info'
+      ? `Go to your threads.net tab (the one running the bridge) and open <strong>@${escapeHtml(username)}</strong>'s profile. You don't need to do anything else — we'll detect it automatically.`
+      : `Go to your threads.net tab (the one running the bridge), open <strong>@${escapeHtml(username)}</strong>'s profile, and click <strong>${actionLabel}</strong>. We'll detect it automatically and handle the rest of your selection for you.`;
+    $('#record-modal-status').textContent = 'Waiting for your action…';
+    modal.hidden = false;
+
+    api('/api/start-recording', { method: 'POST', body: JSON.stringify({ role, targetUsername: username }) })
+      .catch((err) => { $('#record-modal-status').textContent = `Error: ${err.message}`; });
+
+    let settled = false;
+    const cancelBtn = $('#record-modal-cancel');
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(poll);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.hidden = true;
+      resolve(result);
+    };
+    const onCancel = async () => {
+      await api('/api/cancel-recording', { method: 'POST' }).catch(() => {});
+      finish(false);
+    };
+    cancelBtn.addEventListener('click', onCancel);
+
+    const poll = setInterval(async () => {
+      try {
+        const status = await api('/api/status');
+        if (status.taggedTemplates[role]) {
+          $('#record-modal-status').textContent = 'Captured! Continuing…';
+          setTimeout(() => finish(true), 900);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 1500);
+  }
+
+  $$('.reset-tpl').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Reset the learned "${btn.dataset.role}" action? You'll be walked through teaching it again next time you use it.`)) return;
+      try {
+        await api('/api/clear-template', { method: 'POST', body: JSON.stringify({ role: btn.dataset.role }) });
+        pollStatus();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 
   // --- Step 3: action requests / tagging ---
@@ -220,12 +288,30 @@
     const usernames = Array.from(state.selected);
     if (usernames.length === 0) return;
     if (!confirm(`${roles.join(' + ')} ${usernames.length} account(s)? This will be executed from your threads.net tab.`)) return;
-    try {
-      for (const role of roles) {
-        await api('/api/request-actions', { method: 'POST', body: JSON.stringify({ role, usernames }) });
+
+    for (const role of roles) {
+      const { ok, recorded } = await ensureTemplate(role, usernames[0]);
+      if (!ok) return; // user cancelled the guided capture
+
+      let toQueue = usernames;
+      if (recorded) {
+        // usernames[0] was just done manually as the "teach it" example —
+        // don't queue it again, just reflect that it's done.
+        toQueue = usernames.slice(1);
+        state.jobsByUsername.set(usernames[0], {
+          jobId: -1,
+          role,
+          status: 'success',
+          detail: 'done manually (used to teach the tool)',
+        });
+        renderResults();
       }
-    } catch (err) {
-      alert(err.message);
+      if (toQueue.length === 0) continue;
+      try {
+        await api('/api/request-actions', { method: 'POST', body: JSON.stringify({ role, usernames: toQueue }) });
+      } catch (err) {
+        alert(err.message);
+      }
     }
   }
   $('#block-selected').addEventListener('click', () => runBulkAction(['block']));
