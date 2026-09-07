@@ -20,12 +20,12 @@
     <button id="copy-bridge">Copy script</button>
     <span id="copy-confirm" class="hint"></span>
     <p class="hint">This runs entirely in your browser tab. It never sees or sends your password/cookies — it just lets your tab report its own network traffic to this local tool, and later replay actions you approve. Right after you paste it, a small "relay" popup will open — allow popups for threads.com if your browser blocks it, and leave that popup open (it can be minimized).</p>
-    <p class="hint">Browsers pause JavaScript timers in tabs you're not actively looking at, so if you switch away from the threads.com tab for a while (e.g. to look at this page), the connection banner above may show amber/red even though nothing's actually broken — just click back into that tab for a few seconds and it'll catch up.</p>
+    <p class="hint">The bridge runs its background work through a Web Worker specifically so it keeps going even while you switch to look at this page — you shouldn't need to keep clicking back into the threads.com tab. If the connection banner above does ever go amber/red for a while, click into that tab briefly and it'll catch up (some browsers still throttle things after long enough backgrounded).</p>
   </section>
 
   <section class="card" id="step2">
     <h2>2. Capture your followers</h2>
-    <p>On the threads.com tab, go to your profile → Followers. You don't need to scroll it yourself — the bridge scrolls the list automatically while that page is open, so just leave it open (in the foreground, not a background tab — see the note in step 1) and watch the counters below climb.</p>
+    <p>On the threads.com tab, go to your profile → Followers. You don't need to scroll it yourself — the bridge scrolls the list automatically while that page is open, and keeps doing so even if you switch to another tab. Just leave it open and watch the counters below climb.</p>
     <div class="status-grid">
       <div><span id="stat-accounts">0</span><label>accounts seen</label></div>
       <div><span id="stat-counts">0</span><label>with follower/following counts</label></div>

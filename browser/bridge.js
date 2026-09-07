@@ -337,63 +337,110 @@
   }
 
   let stopped = false;
-  async function pollLoop() {
-    while (!stopped) {
+
+  // Browsers throttle regular setTimeout/setInterval in tabs that aren't in
+  // the foreground — that's what makes both the connection heartbeat AND
+  // the auto-scroll (and hence new-follower capture) stall out when you
+  // switch away to look at the local UI page. A dedicated Worker's timers
+  // are generally exempt from that same-page throttling, so we drive both
+  // loops from a tiny inline Worker instead: it just ticks on schedule and
+  // posts a message back, and the actual work (fetch calls, DOM scrolling)
+  // still runs on the main thread when that tick arrives — that part can't
+  // move into the Worker (no DOM access there), but receiving a Worker's
+  // postMessage isn't subject to the same clamp as this page's own timers.
+  // Falls back to a plain setTimeout loop if Workers are blocked here
+  // (e.g. by a worker-src CSP restriction) — still works, just still
+  // throttleable, same as before.
+  function createTicker(intervalMs) {
+    try {
+      const code = `let t; onmessage=(e)=>{ if(e.data==='start') t=setInterval(()=>postMessage('tick'), ${intervalMs}); else if(e.data==='stop') clearInterval(t); };`;
+      const blob = new Blob([code], { type: 'application/javascript' });
+      const worker = new Worker(URL.createObjectURL(blob));
+      worker.postMessage('start');
+      return worker;
+    } catch (err) {
+      console.warn('[threads-bot-filter] background Worker unavailable, falling back to a regular timer (more prone to browser tab-throttling):', err);
+      return null;
+    }
+  }
+
+  function driveWithTicker(intervalMs, onceFn, label) {
+    const worker = createTicker(intervalMs);
+    let busy = false;
+    const tick = async () => {
+      if (stopped || busy) return;
+      busy = true;
       try {
-        const { profileFetchUsernames, actionJobs, templates } = await rpc('pending-jobs', {});
-
-        if (profileFetchUsernames && profileFetchUsernames.length) {
-          if (!templates.profile_info) {
-            console.warn('[threads-bot-filter] have profile-fetch requests queued but no "profile_info" template tagged yet — open the local UI\'s "Recorder" tab and tag a captured profile-view request.');
-          } else {
-            for (const username of profileFetchUsernames) {
-              try {
-                await runTemplate(templates.profile_info, { username });
-              } catch (err) {
-                console.warn('[threads-bot-filter] profile fetch failed for', username, err);
-              }
-              await sleep(jitterDelay());
-            }
-          }
-        }
-
-        if (actionJobs && actionJobs.length) {
-          for (const job of actionJobs) {
-            const template = templates[job.role];
-            if (!template) {
-              safeCompleteJob(job.jobId, 'failed', `no ${job.role} template tagged`);
-              continue;
-            }
-            try {
-              const result = await runTemplate(template, job.target);
-              if (!result.ok) {
-                safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status}: ${result.snippet}`);
-              } else if (job.role === 'block') {
-                // The mutation call succeeding doesn't guarantee the block
-                // actually stuck — re-check via profile_info before calling
-                // it done (see verifyBlock's comment above).
-                await sleep(jitterDelay());
-                const verification = await verifyBlock(job.target, templates);
-                if (verification.outcome === 'verified') {
-                  safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}, verified blocked`);
-                } else if (verification.outcome === 'contradicted') {
-                  safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status} but re-check shows NOT blocked — try again, or tag a fresh block request`);
-                } else {
-                  safeCompleteJob(job.jobId, 'success', `HTTP ${result.status} (unverified — no profile_info template to double-check with)`);
-                }
-              } else {
-                safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}: ${result.snippet}`);
-              }
-            } catch (err) {
-              safeCompleteJob(job.jobId, 'failed', String(err));
-            }
-            await sleep(jitterDelay());
-          }
-        }
+        await onceFn();
       } catch (err) {
-        console.warn('[threads-bot-filter] poll loop error (will retry):', err);
+        console.warn(`[threads-bot-filter] ${label} error (will retry):`, err);
       }
-      await sleep(POLL_INTERVAL_MS);
+      busy = false;
+    };
+    if (worker) {
+      worker.onmessage = tick;
+      return worker;
+    }
+    // Fallback: a plain self-rescheduling loop (subject to tab throttling).
+    (async function fallbackLoop() {
+      while (!stopped) {
+        await tick();
+        await sleep(intervalMs);
+      }
+    })();
+    return null;
+  }
+
+  async function pollOnce() {
+    const { profileFetchUsernames, actionJobs, templates } = await rpc('pending-jobs', {});
+
+    if (profileFetchUsernames && profileFetchUsernames.length) {
+      if (!templates.profile_info) {
+        console.warn('[threads-bot-filter] have profile-fetch requests queued but no "profile_info" template tagged yet — the local UI will walk you through teaching it.');
+      } else {
+        for (const username of profileFetchUsernames) {
+          try {
+            await runTemplate(templates.profile_info, { username });
+          } catch (err) {
+            console.warn('[threads-bot-filter] profile fetch failed for', username, err);
+          }
+          await sleep(jitterDelay());
+        }
+      }
+    }
+
+    if (actionJobs && actionJobs.length) {
+      for (const job of actionJobs) {
+        const template = templates[job.role];
+        if (!template) {
+          safeCompleteJob(job.jobId, 'failed', `no ${job.role} template tagged`);
+          continue;
+        }
+        try {
+          const result = await runTemplate(template, job.target);
+          if (!result.ok) {
+            safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status}: ${result.snippet}`);
+          } else if (job.role === 'block') {
+            // The mutation call succeeding doesn't guarantee the block
+            // actually stuck — re-check via profile_info before calling
+            // it done (see verifyBlock's comment above).
+            await sleep(jitterDelay());
+            const verification = await verifyBlock(job.target, templates);
+            if (verification.outcome === 'verified') {
+              safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}, verified blocked`);
+            } else if (verification.outcome === 'contradicted') {
+              safeCompleteJob(job.jobId, 'failed', `HTTP ${result.status} but re-check shows NOT blocked — try again, or tag a fresh block request`);
+            } else {
+              safeCompleteJob(job.jobId, 'success', `HTTP ${result.status} (unverified — no profile_info template to double-check with)`);
+            }
+          } else {
+            safeCompleteJob(job.jobId, 'success', `HTTP ${result.status}: ${result.snippet}`);
+          }
+        } catch (err) {
+          safeCompleteJob(job.jobId, 'failed', String(err));
+        }
+        await sleep(jitterDelay());
+      }
     }
   }
 
@@ -423,35 +470,33 @@
     return best;
   }
 
-  async function autoScrollLoop() {
-    while (!stopped) {
-      try {
-        if (/\/(followers|following)(\/|$)/i.test(location.pathname)) {
-          if (location.pathname !== cachedScrollPath) {
-            cachedScrollPath = location.pathname;
-            cachedScrollEl = findBestScrollable();
-          }
-          window.scrollBy(0, 2500);
-          if (document.scrollingElement) {
-            document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
-          }
-          if (cachedScrollEl) cachedScrollEl.scrollTop = cachedScrollEl.scrollHeight;
-        } else {
-          cachedScrollPath = null;
-          cachedScrollEl = null;
-        }
-      } catch (err) {
-        console.warn('[threads-bot-filter] auto-scroll error (will retry):', err);
+  async function autoScrollOnce() {
+    if (/\/(followers|following)(\/|$)/i.test(location.pathname)) {
+      if (location.pathname !== cachedScrollPath) {
+        cachedScrollPath = location.pathname;
+        cachedScrollEl = findBestScrollable();
       }
-      await sleep(1800 + Math.random() * 1200);
+      window.scrollBy(0, 2500);
+      if (document.scrollingElement) {
+        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+      }
+      if (cachedScrollEl) cachedScrollEl.scrollTop = cachedScrollEl.scrollHeight;
+    } else {
+      cachedScrollPath = null;
+      cachedScrollEl = null;
     }
   }
+
+  let pollWorker = null;
+  let scrollWorker = null;
 
   window.__tfBridge = {
     _active: true,
     openRelay,
     stop() {
       stopped = true;
+      if (pollWorker) { pollWorker.postMessage('stop'); pollWorker.terminate(); }
+      if (scrollWorker) { scrollWorker.postMessage('stop'); scrollWorker.terminate(); }
       window.fetch = originalFetch;
       XMLHttpRequest.prototype.open = originalXhrOpen;
       XMLHttpRequest.prototype.send = originalXhrSend;
@@ -464,7 +509,7 @@
   if (!openRelay()) {
     console.warn('[threads-bot-filter] continuing without a relay for now — run __tfBridge.openRelay() once you\'ve allowed popups.');
   }
-  pollLoop();
-  autoScrollLoop();
-  console.log('[threads-bot-filter] bridge active. A relay popup should have opened — keep it open. Open your followers list and leave it open — it scrolls itself. Then check the local UI tab.');
+  pollWorker = driveWithTicker(POLL_INTERVAL_MS, pollOnce, 'poll loop');
+  scrollWorker = driveWithTicker(2200, autoScrollOnce, 'auto-scroll');
+  console.log('[threads-bot-filter] bridge active. A relay popup should have opened — keep it open. Open your followers list and leave it open — it scrolls itself, and should keep working even if you switch to another tab.');
 })();

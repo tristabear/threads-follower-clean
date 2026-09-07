@@ -110,9 +110,10 @@ Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
    turn green ("Bridge: connected") — if it doesn't, nothing past this point
    will work, so that's the first thing to check if something seems stuck.
 2. **Capture your followers** — open your followers list on threads.com and
-   leave it open; the bridge scrolls it automatically (keep that tab in the
-   foreground, not backgrounded — see the throttling note below). Watch the
-   counters go up on the local page. Click **"Fetch details for accounts
+   leave it open; the bridge scrolls it automatically, and keeps doing so
+   even if you switch to another tab (see the throttling note below for how
+   and where that can still fall short). Watch the counters go up on the
+   local page. Click **"Fetch details for accounts
    missing data"** to backfill follower/following counts, photo, and bio
    (needed for rules c and d). For rule d specifically, also open "About
    this profile" on a candidate at least once so their Threads join-date
@@ -139,18 +140,22 @@ again next time you need it.
 
 ### "Bridge: not responding" but the tab and popup are both open
 
-This is almost always browser tab throttling, not an actual break: browsers
-slow down JavaScript timers in tabs you're not actively looking at, to save
-battery/CPU. If you switch away from the threads.com tab (e.g.
-to look at this local page), its poll loop can go quiet for well past the
-few-seconds cadence it normally runs at — the banner will show amber
-("slow to respond") first, and only turns red after a much longer silence.
-Click back into that tab for a few seconds and it'll catch back up. There's
-no code-level fix for this — it's a deliberate browser power-saving
-behavior that affects any tool built this way (a pasted script has no way
-to keep its own tab "awake"). Keeping the threads.com tab visible (even in
-a side-by-side window instead of switching between full-screen tabs) avoids
-it entirely.
+Browsers throttle regular JavaScript timers in tabs you're not actively
+looking at, to save battery/CPU — that's what used to make both the
+connection heartbeat and auto-scroll stall out whenever you switched away
+from the threads.com tab. The bridge now drives both from a background Web
+Worker instead, whose timers generally aren't subject to that same-page
+throttling, specifically so you shouldn't have to keep clicking back into
+that tab. It falls back to the old (throttleable) behavior automatically if
+Workers are blocked for some reason (e.g. a stricter CSP than usual) — you'd
+see a console warning about it if so.
+
+This isn't a hard guarantee for every browser and situation — very long
+periods backgrounded, or OS-level power-saving on top of the browser's own,
+can still eventually slow things down. If the banner does go amber
+("slow to respond"), that's still fine, just slower; it only turns red
+after a much longer silence. Click back into that tab for a few seconds
+and it'll catch back up.
 
 If the banner stays red for a long time even with the tab focused, check:
 the relay popup hasn't thrown an error (open its own DevTools console),
