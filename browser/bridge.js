@@ -118,13 +118,23 @@
     return out;
   }
 
-  function looksInteresting(url, contentType) {
+  // Whether a captured request is worth forwarding at all. GET requests
+  // are only useful to us if their response is JSON (that's where follower/
+  // profile data lives). Non-GET requests (block, report, follow, ...) are
+  // ALWAYS worth forwarding for tagging purposes, even when their response
+  // body is empty or not JSON (a lot of action endpoints return 204/plain
+  // "ok" — we still need the request URL/method/headers/body to build a
+  // replay template from it, we just won't get any response data from it).
+  function shouldForward(url, method, contentType) {
     if (url.startsWith(BASE)) return false; // never loop back on ourselves
-    if (contentType && !contentType.includes('json')) return false;
-    return true;
+    if (method !== 'GET') return true;
+    return !contentType || contentType.includes('json');
   }
 
   function safeIngest(payload) {
+    if (payload.method !== 'GET') {
+      console.log(`[threads-bot-filter] captured ${payload.method} ${payload.url} — check the local UI's "Record your actions" table to tag it.`);
+    }
     rpc('ingest', payload).catch((err) => console.warn('[threads-bot-filter] ingest relay failed:', err));
   }
 
@@ -135,8 +145,10 @@
       const url = typeof input === 'string' ? input : input.url;
       const method = (init && init.method) || (typeof input !== 'string' && input.method) || 'GET';
       const contentType = response.headers.get('content-type') || '';
-      if (looksInteresting(url, contentType)) {
-        response.clone().json().then((json) => {
+      if (shouldForward(url, method, contentType)) {
+        // Best-effort JSON parse — never let a non-JSON/empty body (common
+        // for action endpoints) stop us from forwarding the request itself.
+        response.clone().json().catch(() => null).then((json) => {
           safeIngest({
             method,
             url,
@@ -145,7 +157,7 @@
             responseBody: json,
             ts: Date.now(),
           });
-        }).catch(() => {});
+        });
       }
     } catch {
       // never let capture logic break the real request
@@ -170,8 +182,9 @@
       this.addEventListener('load', () => {
         try {
           const contentType = this.getResponseHeader('content-type') || '';
-          if (looksInteresting(meta.url, contentType)) {
-            const json = JSON.parse(this.responseText);
+          if (shouldForward(meta.url, meta.method, contentType)) {
+            let json = null;
+            try { json = JSON.parse(this.responseText); } catch { json = null; }
             safeIngest({
               method: meta.method,
               url: meta.url,
@@ -182,7 +195,7 @@
             });
           }
         } catch {
-          // not JSON or parse failed, ignore
+          // never let capture logic break the real request
         }
       });
     }
