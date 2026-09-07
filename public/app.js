@@ -32,23 +32,32 @@
   });
 
   // --- Bridge connectivity banner ---
-  // The bridge's poll loop hits /api/pending-jobs roughly every 4s whenever
-  // it's actually running in a threads.net tab, regardless of whether you're
-  // doing anything on the page — so a stale lastPollAt reliably means the
-  // bridge isn't connected (closed tab, closed relay popup, a page reload
-  // that wiped the pasted script), not just "you're not browsing right now".
-  const BRIDGE_STALE_MS = 12000;
+  // The bridge's poll loop hits /api/pending-jobs roughly every 4s while
+  // it's running — but browsers throttle JS timers in tabs that aren't in
+  // the foreground (to save battery/CPU), so if the threads.net/threads.com
+  // tab isn't the one you're actively looking at, its poll interval can
+  // stretch to well past 4s even though nothing is actually broken. So we
+  // treat a short gap as "probably just throttled" and only call it
+  // genuinely disconnected after a much longer silence.
+  const BRIDGE_THROTTLED_MS = 15000;
+  const BRIDGE_DISCONNECTED_MS = 90000;
   function updateBridgeBanner(s) {
     const el = $('#bridge-status');
     const age = s.lastPollAt ? Date.now() - s.lastPollAt : null;
-    if (age !== null && age < BRIDGE_STALE_MS) {
+    if (age !== null && age < BRIDGE_THROTTLED_MS) {
       state.bridgeConnected = true;
       el.className = 'bridge-status connected';
       el.textContent = '● Bridge: connected';
+    } else if (age !== null && age < BRIDGE_DISCONNECTED_MS) {
+      // Not necessarily broken — most likely the tab is just backgrounded
+      // and throttled. Still usable, just slower.
+      state.bridgeConnected = true;
+      el.className = 'bridge-status throttled';
+      el.textContent = `● Bridge: slow to respond (last seen ${timeAgo(s.lastPollAt)}) — probably just backgrounded; click into the threads.net tab to wake it up`;
     } else if (s.lastPollAt) {
       state.bridgeConnected = false;
       el.className = 'bridge-status disconnected';
-      el.textContent = `● Bridge: not responding (last seen ${timeAgo(s.lastPollAt)}) — is the threads.net tab and its relay popup still open?`;
+      el.textContent = `● Bridge: not responding (last seen ${timeAgo(s.lastPollAt)}) — click into the threads.net tab (browsers pause background tabs), and check the relay popup is still open and hasn't errored`;
     } else {
       state.bridgeConnected = false;
       el.className = 'bridge-status unknown';

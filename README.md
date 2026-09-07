@@ -123,6 +123,27 @@ there's a small **"Reset what this tool has learned"** link at the bottom of
 the page — one click clears it and you'll be walked through teaching it
 again next time you need it.
 
+### "Bridge: not responding" but the tab and popup are both open
+
+This is almost always browser tab throttling, not an actual break: browsers
+slow down JavaScript timers in tabs you're not actively looking at, to save
+battery/CPU. If you switch away from the threads.net/threads.com tab (e.g.
+to look at this local page), its poll loop can go quiet for well past the
+few-seconds cadence it normally runs at — the banner will show amber
+("slow to respond") first, and only turns red after a much longer silence.
+Click back into that tab for a few seconds and it'll catch back up. There's
+no code-level fix for this — it's a deliberate browser power-saving
+behavior that affects any tool built this way (a pasted script has no way
+to keep its own tab "awake"). Keeping the threads.net tab visible (even in
+a side-by-side window instead of switching between full-screen tabs) avoids
+it entirely.
+
+If the banner stays red for a long time even with the tab focused, check:
+the relay popup hasn't thrown an error (open its own DevTools console),
+you re-pasted the bridge script after the last `git pull` (an old pasted
+copy doesn't update itself), and popups are actually allowed for
+threads.net/threads.com in your browser's site settings.
+
 ## The five rules
 
 | Rule | What it flags |
