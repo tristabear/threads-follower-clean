@@ -25,7 +25,7 @@
 
   <section class="card" id="step2">
     <h2>2. Capture your followers</h2>
-    <p>On the threads.net tab, go to your profile → Followers, and scroll all the way through the list.</p>
+    <p>On the threads.net tab, go to your profile → Followers. You don't need to scroll it yourself — the bridge scrolls the list automatically while that page is open, so just leave it open (in the foreground, not a background tab — see the note in step 1) and watch the counters below climb.</p>
     <div class="status-grid">
       <div><span id="stat-accounts">0</span><label>accounts seen</label></div>
       <div><span id="stat-counts">0</span><label>with follower/following counts</label></div>
@@ -54,17 +54,19 @@
         </select>
       </label>
       <label class="show-all"><input type="checkbox" id="show-all" /> show all captured accounts (ignore filters)</label>
+      <label class="show-all"><input type="checkbox" id="hide-actioned" checked /> hide already blocked/reported</label>
     </div>
     <p class="hint">Rule d needs your account's "About this profile" data for each candidate to know when they joined Threads — open that panel on a candidate's profile (or use "Fetch details" above, which may already capture it) so it can be evaluated. It still can't check the linked Instagram account's own age automatically — the link shown for a match is a one-click way to check that yourself.</p>
 
     <div class="bulk-bar">
       <button id="select-all">Select all shown</button>
       <button id="select-none">Select none</button>
+      <button id="refresh-now">Refresh</button>
       <span id="selected-count">0 selected</span>
       <button id="block-selected" class="danger">Block selected</button>
       <button id="block-report-selected" class="danger">Block + Report selected</button>
     </div>
-    <p class="hint">First time you click Block (or Report), it'll walk you through one manual click on threads.net so it can learn how — after that, selecting accounts and clicking the button is all you need.</p>
+    <p class="hint">First time you click Block (or Report), it'll walk you through one manual click on threads.net so it can learn how — after that, selecting accounts and clicking the button is all you need. Already-blocked/reported accounts are hidden and auto-skipped even if still selected, so re-running "select all" never re-targets them.</p>
 
     <table class="results-table">
       <thead>

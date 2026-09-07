@@ -257,9 +257,39 @@ class Store {
     return jobs;
   }
 
+  // A job marked 'dispatched' is only actually running for a few seconds at
+  // most — if it's been that long with no complete-job call, the bridge
+  // almost certainly disconnected (tab closed, page reloaded, relay popup
+  // closed) mid-flight and it's never coming back on its own. Reclaim it to
+  // 'pending' so the next poll picks it back up, instead of leaving it
+  // silently stuck forever. Capped so a job that keeps failing this way
+  // doesn't retry forever.
+  static STUCK_JOB_MS = 45000;
+  static MAX_JOB_RETRIES = 3;
+
+  reclaimStuckJobs() {
+    const now = Date.now();
+    for (const j of this.actionJobs) {
+      if (j.status !== 'dispatched' || !j.dispatchedAt) continue;
+      if (now - j.dispatchedAt < Store.STUCK_JOB_MS) continue;
+      j.retryCount = (j.retryCount || 0) + 1;
+      if (j.retryCount > Store.MAX_JOB_RETRIES) {
+        j.status = 'failed';
+        j.detail = `gave up after ${Store.MAX_JOB_RETRIES} attempts — the bridge kept disconnecting before finishing this one`;
+      } else {
+        j.status = 'pending';
+      }
+    }
+  }
+
   drainActionJobs(max) {
+    this.reclaimStuckJobs();
     const pending = this.actionJobs.filter((j) => j.status === 'pending').slice(0, max);
-    for (const j of pending) j.status = 'dispatched';
+    const now = Date.now();
+    for (const j of pending) {
+      j.status = 'dispatched';
+      j.dispatchedAt = now;
+    }
     return pending;
   }
 
@@ -270,6 +300,19 @@ class Store {
       job.detail = detail;
     }
     return job;
+  }
+
+  markAccountActioned(username, role) {
+    const acct = this.getAccountByUsername(username);
+    if (!acct) return;
+    if (role === 'block') {
+      acct.blocked = true;
+      acct.blocked_at = Date.now();
+    } else if (role === 'report') {
+      acct.reported = true;
+      acct.reported_at = Date.now();
+    }
+    this.persist();
   }
 }
 

@@ -368,6 +368,52 @@
     rpc('complete-job', { jobId, status, detail }).catch((err) => console.warn('[threads-bot-filter] complete-job relay failed:', err));
   }
 
+  // --- Auto-scroll: you don't have to manually scroll the followers list.
+  // Only active while the URL looks like a followers/following list (so it
+  // never touches your main feed or anywhere else), and only re-does the
+  // expensive "find the scrollable element" DOM query when the path
+  // actually changes rather than on every tick.
+  let cachedScrollPath = null;
+  let cachedScrollEl = null;
+
+  function findBestScrollable() {
+    let best = null;
+    let bestScore = 0;
+    const candidates = document.querySelectorAll('div, main, section');
+    for (const el of candidates) {
+      const score = el.scrollHeight - el.clientHeight;
+      if (score > 200 && score > bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    return best;
+  }
+
+  async function autoScrollLoop() {
+    while (!stopped) {
+      try {
+        if (/\/(followers|following)(\/|$)/i.test(location.pathname)) {
+          if (location.pathname !== cachedScrollPath) {
+            cachedScrollPath = location.pathname;
+            cachedScrollEl = findBestScrollable();
+          }
+          window.scrollBy(0, 2500);
+          if (document.scrollingElement) {
+            document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+          }
+          if (cachedScrollEl) cachedScrollEl.scrollTop = cachedScrollEl.scrollHeight;
+        } else {
+          cachedScrollPath = null;
+          cachedScrollEl = null;
+        }
+      } catch (err) {
+        console.warn('[threads-bot-filter] auto-scroll error (will retry):', err);
+      }
+      await sleep(1800 + Math.random() * 1200);
+    }
+  }
+
   window.__tfBridge = {
     _active: true,
     openRelay,
@@ -386,5 +432,6 @@
     console.warn('[threads-bot-filter] continuing without a relay for now — run __tfBridge.openRelay() once you\'ve allowed popups.');
   }
   pollLoop();
-  console.log(`[threads-bot-filter] bridge active. A relay popup should have opened — keep it open. Scroll your followers list to capture accounts, then check the local UI tab.`);
+  autoScrollLoop();
+  console.log('[threads-bot-filter] bridge active. A relay popup should have opened — keep it open. Open your followers list and leave it open — it scrolls itself. Then check the local UI tab.');
 })();

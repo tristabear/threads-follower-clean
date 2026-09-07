@@ -125,6 +125,9 @@ function createApp(port) {
   app.post('/api/complete-job', (req, res) => {
     const { jobId, status, detail } = req.body || {};
     const job = store.completeActionJob(jobId, status, detail);
+    if (job && status === 'success') {
+      store.markAccountActioned(job.target.username, job.role);
+    }
     res.json({ ok: true, found: !!job });
   });
 
@@ -193,6 +196,18 @@ function createApp(port) {
 
   app.post('/api/cancel-recording', (req, res) => {
     store.cancelRecording();
+    res.json({ ok: true });
+  });
+
+  // Used when an account was actioned manually as the "teach it" example
+  // rather than through a replayed job — it still needs to be marked done
+  // so it doesn't get re-selected next time.
+  app.post('/api/mark-actioned', (req, res) => {
+    const { username, role } = req.body || {};
+    if (!username || (role !== 'block' && role !== 'report')) {
+      return res.status(400).json({ error: 'username and role (block|report) required' });
+    }
+    store.markAccountActioned(username, role);
     res.json({ ok: true });
   });
 

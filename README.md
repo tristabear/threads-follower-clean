@@ -84,7 +84,14 @@ tab**:
   guarantee — see point 6 above. Always spot-check a few afterward,
   especially if you see "(unverified)" a lot (it means you haven't used
   "Fetch details" yet, so there's no profile_info template to double-check
-  with).
+  with). A verified block/report gets recorded on the account itself (not
+  just in that browser tab's memory), so it survives page reloads and stays
+  hidden/skipped in future runs.
+- If the bridge disconnects mid-action (closed tab, page reload, closed
+  relay popup), that job doesn't just vanish — after ~45s of silence it's
+  automatically put back in the queue and retried on the next connection,
+  up to 3 attempts, before giving up and marking it failed with an
+  explanation (hover the Status cell to see it).
 - Captured data (other people's usernames, bios, etc.) is written to
   `.threads-bot-filter/state.json` on your machine so you don't lose
   progress on restart. It's gitignored. Don't publish or share it.
@@ -102,16 +109,23 @@ Then open **http://127.0.0.1:4173** — the page walks you through 3 steps:
    DevTools console on threads.net. Watch the banner at the top of the page
    turn green ("Bridge: connected") — if it doesn't, nothing past this point
    will work, so that's the first thing to check if something seems stuck.
-2. **Capture your followers** — scroll your followers list on threads.net.
-   Watch the counters go up on the local page. Click **"Fetch details for
-   accounts missing data"** to backfill follower/following counts, photo,
-   and bio (needed for rules c and d). For rule d specifically, also open
-   "About this profile" on a candidate at least once so their Threads
-   join-date can be captured.
+2. **Capture your followers** — open your followers list on threads.net and
+   leave it open; the bridge scrolls it automatically (keep that tab in the
+   foreground, not backgrounded — see the throttling note below). Watch the
+   counters go up on the local page. Click **"Fetch details for accounts
+   missing data"** to backfill follower/following counts, photo, and bio
+   (needed for rules c and d). For rule d specifically, also open "About
+   this profile" on a candidate at least once so their Threads join-date
+   can be captured.
 3. **Filter, select, and act** — the list already only shows accounts
-   matching at least one rule; check specific rule boxes (a-e) to narrow it
-   further, pick "any" or "all", select the accounts you want, and click
-   **Block selected** or **Block + Report selected**.
+   matching at least one rule, with already-blocked/reported accounts
+   hidden by default; check specific rule boxes (a-e) to narrow it further,
+   pick "any" or "all", select the accounts you want, and click **Block
+   selected** or **Block + Report selected**. Re-running this on a
+   selection that includes already-done accounts just skips them — it
+   won't re-queue or re-teach anything for them. There's a **Refresh**
+   button next to Select all/none if you want to force an immediate
+   re-check instead of waiting for the automatic ~3s poll.
 
 That's genuinely it for day-to-day use. The "teach it your block/report"
 step isn't a separate thing you have to understand — it only shows up

@@ -213,11 +213,40 @@
     return effective.some((f) => matchedIds.has(f));
   }
 
-  function renderResults() {
+  // Shared by rendering and "select all" so they never drift apart.
+  function visibleAccounts() {
     const showAll = $('#show-all').checked;
+    const hideActioned = $('#hide-actioned').checked;
     const filters = activeFilters();
     const mode = $('#match-mode').value;
-    const rows = state.accounts.filter((a) => showAll || matchesFilters(a, filters, mode));
+    return state.accounts.filter((a) => {
+      if (hideActioned && (a.blocked || a.reported)) return false;
+      return showAll || matchesFilters(a, filters, mode);
+    });
+  }
+
+  function statusFor(a) {
+    const job = state.jobsByUsername.get(a.username);
+    // Persisted account-level flags (survive reload) take priority over a
+    // stale in-memory job entry, but a live in-progress job still shows.
+    if (job && (job.status === 'pending' || job.status === 'dispatched')) {
+      return { text: `${job.role}: ${job.status}`, cls: job.status, title: job.detail || '' };
+    }
+    const parts = [];
+    if (a.blocked) parts.push('blocked ✓');
+    if (a.reported) parts.push('reported ✓');
+    if (parts.length) return { text: parts.join(', '), cls: 'success', title: '' };
+    if (job) {
+      let text = `${job.role}: ${job.status}`;
+      let cls = job.status;
+      if (job.detail && /not blocked/i.test(job.detail)) { text += ' ⚠ NOT actually blocked'; cls = 'failed'; } else if (job.detail && /unverified/i.test(job.detail)) text += ' (unverified)';
+      return { text, cls, title: job.detail || '' };
+    }
+    return { text: '', cls: '', title: '' };
+  }
+
+  function renderResults() {
+    const rows = visibleAccounts();
 
     const body = $('#results-body');
     body.innerHTML = '';
@@ -230,13 +259,7 @@
       const igHandle = a.matches.find((m) => m.id === 'd')?.instagramHandle;
       const bioSnippet = a.biography ? escapeHtml(truncate(a.biography, 80)) : '<span class="hint">no bio fetched</span>';
       const igLink = igHandle ? `<br/><a href="https://instagram.com/${igHandle}" target="_blank" rel="noopener">@${igHandle}</a>` : '';
-      const job = state.jobsByUsername.get(a.username);
-      let statusText = job ? `${job.role}: ${job.status}` : '';
-      let statusClass = job ? job.status : '';
-      if (job && job.detail) {
-        if (/not blocked/i.test(job.detail)) { statusText += ' ⚠ NOT actually blocked'; statusClass = 'failed'; } else if (/unverified/i.test(job.detail)) statusText += ' (unverified)';
-        else if (/verified/i.test(job.detail)) statusText += ' ✓';
-      }
+      const { text: statusText, cls: statusClass, title: statusTitle } = statusFor(a);
 
       tr.innerHTML = `
         <td><input type="checkbox" class="row-select" ${checked} /></td>
@@ -247,7 +270,7 @@
         <td>${a.is_default_avatar === undefined ? '?' : (a.is_default_avatar ? 'none' : 'yes')}</td>
         <td>${badges}${unknown}</td>
         <td>${bioSnippet}${igLink}</td>
-        <td class="status-cell ${statusClass}" title="${escapeHtml(job ? job.detail || '' : '')}">${statusText}</td>
+        <td class="status-cell ${statusClass}" title="${escapeHtml(statusTitle)}">${statusText}</td>
       `;
       tr.querySelector('.row-select').addEventListener('change', (e) => {
         if (e.target.checked) state.selected.add(a.username);
@@ -266,20 +289,20 @@
   $$('.rule-filter').forEach((el) => el.addEventListener('change', renderResults));
   $('#match-mode').addEventListener('change', renderResults);
   $('#show-all').addEventListener('change', renderResults);
+  $('#hide-actioned').addEventListener('change', renderResults);
 
   $('#select-all').addEventListener('click', () => {
-    $$('.row-select').forEach((cb) => { cb.checked = true; });
-    const showAll = $('#show-all').checked;
-    const filters = activeFilters();
-    const mode = $('#match-mode').value;
-    for (const a of state.accounts) {
-      if (showAll || matchesFilters(a, filters, mode)) state.selected.add(a.username);
-    }
-    updateSelectedCount();
+    for (const a of visibleAccounts()) state.selected.add(a.username);
+    renderResults();
   });
   $('#select-none').addEventListener('click', () => {
     state.selected.clear();
     renderResults();
+  });
+  $('#refresh-now').addEventListener('click', () => {
+    pollStatus();
+    pollAccounts();
+    pollJobs();
   });
 
   async function runBulkAction(roles) {
@@ -297,21 +320,32 @@
 
     try {
       let totalQueued = 0;
+      let totalSkipped = 0;
       for (const role of roles) {
-        const { ok, recorded } = await ensureTemplate(role, usernames[0]);
+        // Never re-queue an account that's already confirmed done for this
+        // role, even if it's still in the current selection.
+        const alreadyDone = new Set(
+          state.accounts.filter((a) => (role === 'block' ? a.blocked : a.reported)).map((a) => a.username),
+        );
+        const roleUsernames = usernames.filter((u) => !alreadyDone.has(u));
+        totalSkipped += usernames.length - roleUsernames.length;
+        if (roleUsernames.length === 0) continue;
+
+        const { ok, recorded } = await ensureTemplate(role, roleUsernames[0]);
         if (!ok) return; // user cancelled the guided capture
 
-        let toQueue = usernames;
+        let toQueue = roleUsernames;
         if (recorded) {
-          // usernames[0] was just done manually as the "teach it" example —
-          // don't queue it again, just reflect that it's done.
-          toQueue = usernames.slice(1);
-          state.jobsByUsername.set(usernames[0], {
+          // roleUsernames[0] was just done manually as the "teach it"
+          // example — don't queue it again, just reflect that it's done.
+          toQueue = roleUsernames.slice(1);
+          state.jobsByUsername.set(roleUsernames[0], {
             jobId: -1,
             role,
             status: 'success',
             detail: 'done manually (used to teach the tool)',
           });
+          api('/api/mark-actioned', { method: 'POST', body: JSON.stringify({ username: roleUsernames[0], role }) }).catch(() => {});
           renderResults();
         }
         if (toQueue.length === 0) continue;
@@ -322,12 +356,14 @@
         }
       }
       renderResults();
+      const notes = [];
       if (totalQueued > 0) {
-        const bridgeNote = state.bridgeConnected
-          ? 'Watch the Status column below as your threads.net tab works through them.'
-          : "Your bridge doesn't look connected right now (see the banner above) — they'll stay \"pending\" until it is.";
-        showToast(`Queued ${totalQueued} action(s). ${bridgeNote}`);
+        notes.push(state.bridgeConnected
+          ? `Queued ${totalQueued} action(s) — watch the Status column below.`
+          : `Queued ${totalQueued} action(s), but the bridge doesn't look connected — they'll stay "pending" until it is.`);
       }
+      if (totalSkipped > 0) notes.push(`Skipped ${totalSkipped} already-done account(s).`);
+      if (notes.length) showToast(notes.join(' '));
     } catch (err) {
       alert(`Something went wrong: ${err.message}`);
     }
